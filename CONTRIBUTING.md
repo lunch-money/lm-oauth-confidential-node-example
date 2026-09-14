@@ -4,4 +4,10 @@ Before proposing a change, run `npm run check`. Keep the OAuth teaching path com
 
 Changes to OAuth behavior must update the corresponding source JSDoc/security invariant, focused test, root walkthrough, and relevant supporting document. Refresh changes must preserve the documented rotation, serialization, atomic replacement, and terminal recovery contract.
 
+## Keep the Developer Portal walkthrough synchronized
+
+`docs/WALKTHROUGH.md` is the canonical source for the shared hands-on walkthrough published in the Lunch Money Developer Portal. Changes to that file on `main` trigger `.github/workflows/sync-developer-docs-walkthrough.yml`, which checks out the synchronization logic from `lunch-money/developer-docs`, validates the sample revision, and opens a pull request containing the updated source pin and generated Markdown. While OAuth documentation remains in preview, these pull requests target the `v2.11.2` branch; maintainers should update the workflow to target `main` when the OAuth documentation is promoted.
+
+The workflow requires a fine-grained `DEVELOPER_DOCS_PR_TOKEN` Actions secret with access only to `lunch-money/developer-docs` and permission to read and write repository contents and pull requests. It does not publish documentation or merge its pull request.
+
 Maintainer, contribution support path, and code of conduct remain owner decisions. Contributions are licensed under the repository's [MIT License](LICENSE).

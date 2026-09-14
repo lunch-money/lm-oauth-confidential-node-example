@@ -1,0 +1,80 @@
+name: Sync Developer Portal walkthrough
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/WALKTHROUGH.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-developer-docs-walkthrough
+  cancel-in-progress: false
+
+jobs:
+  open-pull-request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out OAuth sample
+        uses: actions/checkout@v7
+        with:
+          path: oauth-sample
+          persist-credentials: false
+
+      - name: Check out developer docs
+        uses: actions/checkout@v7
+        with:
+          repository: lunch-money/developer-docs
+          ref: v2.11.2
+          path: developer-docs
+          token: ${{ secrets.DEVELOPER_DOCS_PR_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - name: Update source revision
+        working-directory: developer-docs
+        env:
+          SAMPLE_REVISION: ${{ github.sha }}
+        run: |
+          node -e "const fs = require('node:fs'); const file = 'scripts/oauth-sample-walkthrough-source.json'; const config = JSON.parse(fs.readFileSync(file, 'utf8')); config.revision = process.env.SAMPLE_REVISION; fs.writeFileSync(file, JSON.stringify(config, null, 2) + '\n');"
+
+      - name: Synchronize and validate walkthrough
+        working-directory: developer-docs
+        run: |
+          npm run sync:oauth-sample -- --sample-root ../oauth-sample
+          npm run validate:oauth-sample -- --sample-root ../oauth-sample
+
+      - name: Create developer docs pull request
+        working-directory: developer-docs
+        env:
+          GH_TOKEN: ${{ secrets.DEVELOPER_DOCS_PR_TOKEN }}
+          SAMPLE_REVISION: ${{ github.sha }}
+        shell: bash
+        run: |
+          branch="automation/oauth-sample-walkthrough-${SAMPLE_REVISION:0:12}"
+          git config user.name "lunch-money-automation"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add scripts/oauth-sample-walkthrough-source.json docs/oauth/sample-applications.md
+
+          if git diff --cached --quiet; then
+            echo "Developer documentation is already synchronized."
+            exit 0
+          fi
+
+          git commit -m "Sync OAuth sample walkthrough"
+          git push origin "$branch"
+          gh pr create \
+            --repo lunch-money/developer-docs \
+            --base v2.11.2 \
+            --head "$branch" \
+            --title "Sync confidential OAuth sample walkthrough" \
+            --body "Updates the generated OAuth sample walkthrough from lunch-money/lm-oauth-confidential-node-example@${SAMPLE_REVISION}.\n\nGenerated and validated by the source repository workflow. This pull request does not publish documentation."

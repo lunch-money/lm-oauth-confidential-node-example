@@ -12,33 +12,42 @@ const owner = {
   applicationUserId: 'user' as ApplicationUserId,
   connectionId: 'primary' as ConnectionId,
 }
+const userProfile = {
+  name: 'Demo User',
+  email: 'demo@example.com',
+  id: 42,
+  account_id: 84,
+  budget_name: 'Demo budget',
+  primary_currency: 'usd',
+  api_key_label: null,
+}
 
 describe('/v2/me and revocation', () => {
-  it('returns sanitized profile data and keeps the access token server-side', async () => {
+  it('returns the documented user profile and keeps the access token server-side', async () => {
     const store = new InMemoryCredentialStore()
     await store.replace(owner.applicationUserId, owner.connectionId, {
       accessToken: 'private-token',
       scope: 'me:read',
     })
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
-      Response.json({
-        id: 42,
-        access_token: 'upstream-echo',
-        note: 'private-token must disappear',
-      }),
-    )
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json(userProfile))
     const profile = await readLunchMoneyProfile(
       store,
       owner,
       new URL('https://issuer.example/v2/me'),
       fetcher,
     )
-    expect(profile).toEqual({
-      id: 42,
-      access_token: '[redacted]',
-      note: '[redacted] must disappear',
-    })
+    expect(profile).toEqual(userProfile)
     expect(JSON.stringify(profile)).not.toContain('private-token')
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL('https://issuer.example/v2/me'),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer private-token',
+        }),
+      }),
+    )
   })
 
   it('reports missing me:read without returning the upstream body', async () => {
@@ -73,6 +82,26 @@ describe('/v2/me and revocation', () => {
         owner,
         new URL('https://issuer.example/v2/me'),
         vi.fn<typeof fetch>().mockResolvedValue(new Response('not-json')),
+      ),
+    ).rejects.toMatchObject({ code: 'resource_failure' })
+  })
+
+  it('rejects successful responses with fields outside the documented user schema', async () => {
+    const store = new InMemoryCredentialStore()
+    await store.replace(owner.applicationUserId, owner.connectionId, {
+      accessToken: 'token',
+      scope: 'me:read',
+    })
+    await expect(
+      readLunchMoneyProfile(
+        store,
+        owner,
+        new URL('https://issuer.example/v2/me'),
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(
+            Response.json({ ...userProfile, unexpected: 'not in userObject' }),
+          ),
       ),
     ).rejects.toMatchObject({ code: 'resource_failure' })
   })

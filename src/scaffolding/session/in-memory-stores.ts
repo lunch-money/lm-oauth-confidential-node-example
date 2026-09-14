@@ -123,7 +123,7 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
 export interface BrowserSession {
   csrfToken: string
   message?: string
-  profile?: Record<string, import('../../oauth/types.js').SafeJson>
+  profile?: import('../../oauth/lunch-money-api.js').LunchMoneyProfile
   revocation?: { revoked: boolean; oldCredentialRejected: boolean }
   refresh?: import('../../oauth/refresh.js').RefreshResult
 }

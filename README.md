@@ -2,7 +2,7 @@
 
 This repository is a focused reference for developers building a **confidential, server-side web client** in Node.js and TypeScript. It demonstrates one walkthrough end to end: register a Lunch Money OAuth client, authorize it with state and S256 PKCE, call `GET /v2/me`, optionally rotate tokens, revoke access, verify that the old access token fails, and reset the local demonstration.
 
-The browser never receives the client secret, PKCE verifier, authorization code exchange, access token, or refresh token. Register `me:read` for the minimal path; optionally register `offline_access` at the same time to enable the refresh step. [`openid-client`](https://github.com/panva/openid-client) performs discovery and the security-sensitive protocol operations. The small integration developers should study is in [`src/oauth/`](src/oauth/README.md); Hono and the interface are replaceable scaffolding.
+The browser never receives the client secret, PKCE verifier, authorization code exchange, access token, or refresh token. Register `me:read` for the minimal path; optionally register `offline_access` at the same time to enable the refresh step. [`openid-client`](https://github.com/panva/openid-client) is the recommended and supported third-party Node.js library for working with Lunch Money's OAuth interfaces; its [API reference](https://github.com/panva/openid-client/blob/main/docs/README.md) documents the library itself. The small integration developers should study is in [`src/oauth/`](src/oauth/README.md); Hono and the interface are replaceable scaffolding.
 
 > This is a teaching sample, not a production-ready application. Its fixed demo user and in-memory stores provide neither real authentication nor durable multi-user isolation. It does demonstrate browser-session binding, finite one-time attempts, and CSRF-protected forms.
 
@@ -72,7 +72,7 @@ If a form returns **Invalid CSRF token**, reload the home page and try again. Th
 1. Choose **Connect Lunch Money**.
 2. Sign into Lunch Money as the real user who owns the development client.
 3. Select one of that user's real budgeting accounts and approve access. The browser returns to `http://localhost:4002/oauth/callback`.
-4. Choose **Call /v2/me**. The server calls the real `GET /v2/me` endpoint, and the page shows sanitized API data without exposing the OAuth credential in its HTML.
+4. Choose **Call /v2/me**. The server calls the real `GET /v2/me` endpoint, validates the response against the documented user schema, and shows those profile fields without exposing the OAuth credential in its HTML.
 5. If you registered `offline_access`, choose **Refresh access token**. The server uses the server-held refresh token, receives rotated access and refresh tokens, and atomically replaces the complete credential set. The browser sees only a safe outcome. Without `offline_access`, this action is absent.
 6. Choose **Revoke and verify**. For an offline grant the server revokes the refresh token (revoking the grant); otherwise it revokes the access token. It then retries `GET /v2/me` with the old access token, requires a `401`, and deletes the local credential.
 7. Use **Local reset only** when you only want to clear the sample's local credential and browser session. It does **not** revoke access at Lunch Money. Revoke first when you intend to end that access.
@@ -115,7 +115,7 @@ Read [`src/oauth/README.md`](src/oauth/README.md), then these files in order:
 6. [`lunch-money-api.ts`](src/oauth/lunch-money-api.ts) — the server-side `/v2/me` request.
 7. [`refresh.ts`](src/oauth/refresh.ts) — per-connection refresh, atomic rotation persistence, and recovery.
 8. [`revocation.ts`](src/oauth/revocation.ts) — grant-aware revoke, verify, then delete.
-9. [`redaction.ts`](src/oauth/redaction.ts) and [`errors.ts`](src/oauth/errors.ts) — browser/log safety.
+9. [`errors.ts`](src/oauth/errors.ts) — safe browser and log errors.
 
 The executable documentation is in [`tests/oauth/`](tests/oauth/). Framework, cookies, sessions, pages, and startup live in [`src/scaffolding/`](src/scaffolding/README.md).
 

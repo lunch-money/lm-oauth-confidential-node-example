@@ -4,7 +4,7 @@ This example assumes the Node server is trusted with the OAuth client secret and
 
 The client secret, PKCE verifier, authorization-code exchange, access token, and optional refresh token remain server-side. `me:read` is always registered; `offline_access` is optional and must be chosen at client registration because scopes are immutable. Browser cookies contain only a signed opaque session locator and are `HttpOnly`, `SameSite=Lax`, path-scoped, and `Secure` when the registered callback uses HTTPS. Sensitive responses use `Cache-Control: no-store` and `Referrer-Policy: no-referrer`. A random CSRF token lives in server-side session state, is rendered only into same-session forms, and is compared in constant time before every state-changing POST, including `/refresh`. The callback GET uses OAuth state and session binding rather than a form token.
 
-State binds a callback to a single stored authorization attempt. S256 PKCE binds the authorization code to its server-held verifier. The attempt also records the initiating stable application user, connection, opaque application browser session, and a five-minute illustrative expiry. Consumption always removes it; expired attempts, replayed callbacks, other users, and other browser sessions fail before exchange. Five minutes is local application policy, not a Lunch Money guarantee. `openid-client` performs callback and protocol validation; it cannot determine application ownership or session continuity, so those checks remain explicit application responsibilities.
+State binds a callback to a single stored authorization attempt. S256 PKCE binds the authorization code to its server-held verifier. The attempt also records the initiating stable application user, connection, opaque application browser session, and a five-minute illustrative expiry. Consumption always removes it; expired attempts, replayed callbacks, other users, and other browser sessions fail before exchange. Five minutes is local application policy, not a Lunch Money guarantee. [`openid-client`](https://github.com/panva/openid-client) is the recommended and supported third-party Node.js library for Lunch Money OAuth; it performs callback and protocol validation, but it cannot determine application ownership or session continuity, so those checks remain explicit application responsibilities. See its [API reference](https://github.com/panva/openid-client/blob/main/docs/README.md) for library details.
 
 ## Credential ownership
 
@@ -20,7 +20,7 @@ The dangerous sequence is: Lunch Money accepts and consumes the old refresh toke
 
 ## Logging and errors
 
-The sample logs only fixed event names for callback/start failures. It never logs exception text, provider bodies, codes, tokens, verifiers, secrets, or cookies. Browser errors are stable application messages. `/v2/me` JSON is recursively redacted before display. Do not add request/response logging without equivalent redaction and tests. There is intentionally no plaintext token logger or debug escape hatch.
+The sample logs only fixed event names for callback/start failures. It never logs exception text, provider bodies, codes, tokens, verifiers, secrets, or cookies. Browser errors are stable application messages. A successful `/v2/me` response is displayed only after strict validation against its documented `userObject` schema. Do not add request/response logging without an allowlisted logging policy and tests. There is intentionally no plaintext token logger or debug escape hatch.
 
 ## Deliberate omissions
 

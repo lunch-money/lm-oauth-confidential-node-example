@@ -26,7 +26,7 @@ Browser                         Node server                         Lunch Money
   |                                 | store credential under bound owner  |
   | POST /me                        | GET /v2/me with server-held token    |
   |-------------------------------->|----------------------------------->|
-  |<------------- sanitized profile |                                    |
+  |<-------------- validated profile |                                    |
   | POST /refresh (optional)        | serialize; rotate complete set      |
   |-------------------------------->|----------------------------------->|
   | POST /revoke                    | revoke; retry /v2/me; require 401    |
@@ -35,7 +35,7 @@ Browser                         Node server                         Lunch Money
 
 `src/oauth/` knows nothing about Hono, HTML, CSS, cookies, or UI. `src/scaffolding/` adapts those concerns. ESLint plus a source-boundary test enforce the direction of dependency.
 
-`openid-client` owns discovery, standards-compliant state and S256 PKCE generation, authorization URL construction, callback/state validation, authorization-code and refresh-token grants, token-response validation, confidential client authentication, and revocation protocol calls. The application owns user login, session identity, attempt lifetime, immutable-scope registration, ownership, CSRF, per-connection refresh exclusion, complete atomic replacement, terminal recovery, redaction, and lifecycle decisions.
+[`openid-client`](https://github.com/panva/openid-client) is the recommended and supported third-party Node.js library for Lunch Money OAuth. It owns discovery, standards-compliant state and S256 PKCE generation, authorization URL construction, callback/state validation, authorization-code and refresh-token grants, token-response validation, confidential client authentication, and revocation protocol calls. The application owns user login, session identity, attempt lifetime, immutable-scope registration, ownership, CSRF, per-connection refresh coordination, safe replacement of rotated credentials, failure recovery, API response validation, and lifecycle decisions. See the library's [API reference](https://github.com/panva/openid-client/blob/main/docs/README.md) for its own interfaces.
 
 The fixed `local-demo-user` keeps the example runnable but is not authentication or multi-user isolation. The sample additionally binds each attempt to the opaque signed-cookie session that initiated it, expires it after an illustrative five minutes, consumes it once, and protects all form POSTs with a random server-side session CSRF token using constant-time comparison. Production must bind attempts and credentials to its real, stable authenticated `applicationUserId` and server-derived session identity, never email or browser/callback IDs. Its store must provide durable encrypted storage, tenant isolation, key management, atomic replacement, and lifecycle cleanup. No production schema is prescribed here.
 

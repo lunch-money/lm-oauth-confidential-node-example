@@ -1,4 +1,4 @@
-import type { SafeJson } from '../../oauth/types.js'
+import type { LunchMoneyProfile } from '../../oauth/lunch-money-api.js'
 
 function escapeHtml(value: string): string {
   return value
@@ -13,7 +13,7 @@ export function page(input: {
   csrfToken: string
   canRefresh: boolean
   message?: string
-  profile?: Record<string, SafeJson>
+  profile?: LunchMoneyProfile
   revocation?: { revoked: boolean; oldCredentialRejected: boolean }
   refresh?: { status: string; reason?: string }
 }): string {

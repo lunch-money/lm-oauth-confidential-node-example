@@ -30,10 +30,6 @@ export interface CredentialSet {
   readonly scope: string
 }
 
-/** JSON-safe data that may be returned to the browser after credential redaction. */
-export type SafeJson =
-  null | boolean | number | string | SafeJson[] | { [key: string]: SafeJson }
-
 /** Result of revoking a credential and checking that the old token no longer works. */
 export interface RevocationResult {
   readonly revoked: boolean

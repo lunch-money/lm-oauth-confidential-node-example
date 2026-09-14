@@ -112,9 +112,17 @@ describe('Hono scaffolding', () => {
 
   it('never returns credentials in browser HTML after callback and /v2/me', async () => {
     const protocol = new FakeProtocolClient()
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(Response.json({ id: 42 }))
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        name: 'Demo User',
+        email: 'demo@example.com',
+        id: 42,
+        account_id: 84,
+        budget_name: 'Demo budget',
+        primary_currency: 'usd',
+        api_key_label: null,
+      }),
+    )
     const app = createApp(configuration, protocol, { fetcher })
     const session = await openSession(app)
     await app.request(

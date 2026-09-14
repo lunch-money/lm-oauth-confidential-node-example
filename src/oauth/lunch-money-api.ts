@@ -1,11 +1,26 @@
+import { z } from 'zod'
 import { OAuthError } from './errors.js'
-import { redactSensitiveValue } from './redaction.js'
 import type { CredentialStore } from './tokens.js'
-import type { ApplicationUserId, ConnectionId, SafeJson } from './types.js'
+import type { ApplicationUserId, ConnectionId } from './types.js'
+
+const lunchMoneyProfileSchema = z
+  .object({
+    name: z.string(),
+    email: z.string(),
+    id: z.number().int(),
+    account_id: z.number().int(),
+    budget_name: z.string(),
+    primary_currency: z.string(),
+    api_key_label: z.string().nullable(),
+  })
+  .strict()
+
+/** Documented successful response from Lunch Money `GET /v2/me`. */
+export type LunchMoneyProfile = z.infer<typeof lunchMoneyProfileSchema>
 
 /**
  * Calls Lunch Money `GET /v2/me` with a server-held access token and returns a
- * sanitized JSON object. Throws safe errors for missing grants, insufficient
+ * validated user profile. Throws safe errors for missing grants, insufficient
  * scope, malformed JSON, network failures, and other non-success responses.
  */
 export async function readLunchMoneyProfile(
@@ -13,7 +28,7 @@ export async function readLunchMoneyProfile(
   owner: { applicationUserId: ApplicationUserId; connectionId: ConnectionId },
   meEndpoint: URL,
   fetcher: typeof fetch = fetch,
-): Promise<Record<string, SafeJson>> {
+): Promise<LunchMoneyProfile> {
   const credentials = await store.get(
     owner.applicationUserId,
     owner.connectionId,
@@ -52,15 +67,12 @@ export async function readLunchMoneyProfile(
     )
 
   const body: unknown = await response.json().catch(() => undefined)
-  const safe = redactSensitiveValue(body, [
-    credentials.accessToken,
-    credentials.refreshToken ?? '',
-  ])
-  if (!safe || Array.isArray(safe) || typeof safe !== 'object') {
+  const profile = lunchMoneyProfileSchema.safeParse(body)
+  if (!profile.success) {
     throw new OAuthError(
       'resource_failure',
       'Lunch Money /v2/me returned an invalid response.',
     )
   }
-  return safe
+  return profile.data
 }

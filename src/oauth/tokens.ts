@@ -1,13 +1,14 @@
 import type { ApplicationUserId, ConnectionId, CredentialSet } from './types.js'
 
 /**
- * Credential ownership boundary for a confidential integration.
+ * Application-provided storage for Lunch Money credentials.
  *
- * Every operation requires a stable, authenticated application-user identity;
- * optional connection IDs allow multiple grants without weakening ownership.
- * Implementations must enforce tenant isolation. Production implementations
- * also need durable encrypted storage, key management, atomic replacement, and
- * lifecycle cleanup. Never key credentials by email or a browser-provided ID.
+ * Every operation identifies both the signed-in application user and one Lunch
+ * Money connection so credentials cannot be read or changed for another user.
+ * Production implementations must encrypt and durably store credentials, keep
+ * users' data separate, replace a complete credential set in one operation, and
+ * remove it when the connection or application account ends. Use an internal
+ * application user ID, never an email address or browser-provided ID.
  */
 export interface CredentialStore {
   get(
@@ -35,11 +36,13 @@ export async function readCredentials(
 }
 
 /**
- * Atomically replaces the entire credential set.
+ * Saves all replacement credential values together after authorization or
+ * refresh.
  *
- * Refresh-token rotation consumes the old token before this call. A production
- * implementation must commit the new access token, refresh token, expiration,
- * and scope metadata as one transaction; field-by-field updates are unsafe.
+ * Lunch Money stops accepting a refresh token after it is used. A production
+ * implementation must therefore save the new access token, refresh token,
+ * expiration, and scopes in one operation rather than updating fields one at a
+ * time.
  */
 export async function replaceCredentials(
   store: CredentialStore,

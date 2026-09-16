@@ -23,13 +23,11 @@ describe('startup configuration', () => {
       OAUTH_CLIENT_ID: 'client-id',
       OAUTH_CLIENT_SECRET: 'client-secret',
       OAUTH_REDIRECT_URI: 'http://localhost:4002/oauth/callback',
-      LUNCH_MONEY_API_BASE_URL: 'https://api-alpha.lunchmoney.dev/',
+      LUNCH_MONEY_API_BASE_URL: 'https://api.example.test/',
     })
 
-    expect(value.oauth.issuer.href).toBe('https://api-alpha.lunchmoney.dev/')
-    expect(value.oauth.meEndpoint.href).toBe(
-      'https://api-alpha.lunchmoney.dev/v2/me',
-    )
+    expect(value.oauth.issuer.href).toBe('https://api.example.test/')
+    expect(value.oauth.meEndpoint.href).toBe('https://api.example.test/v2/me')
     expect(value.sessionSecret.length).toBeGreaterThanOrEqual(32)
   })
 

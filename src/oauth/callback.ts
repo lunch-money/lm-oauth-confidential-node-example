@@ -9,8 +9,10 @@ import type {
 } from './types.js'
 
 /**
- * Validates and consumes a callback, then stores credentials under the identity
- * bound before redirect. No callback value is accepted as a credential owner.
+ * Called when Lunch Money redirects the browser to the application's callback.
+ * Uses the saved one-time attempt to require the same signed-in user and browser
+ * session, exchanges the code on the server, and saves the credentials for the
+ * user who started the connection. Callback values never choose their owner.
  */
 export async function completeAuthorization(
   protocol: OAuthProtocolClient,

@@ -28,4 +28,4 @@ Application login, distributed sessions/locks, durable encrypted transactional s
 
 ## Reporting vulnerabilities
 
-No security-reporting owner or private contact is currently declared. That is a publication blocker. The owner must add a monitored private reporting path before publication; do not disclose live credentials or personal financial data in a public issue.
+Report potential security concerns privately to [dev-support@lunchmoney.app](mailto:dev-support@lunchmoney.app). Do not post vulnerabilities in Discord or a public GitHub issue, and never include live credentials or personal financial data in a report.

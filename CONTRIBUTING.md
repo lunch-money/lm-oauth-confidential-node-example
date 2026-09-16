@@ -10,4 +10,6 @@ Changes to OAuth behavior must update the corresponding source JSDoc/security in
 
 The workflow requires a fine-grained `DEVELOPER_DOCS_PR_TOKEN` Actions secret with access only to `lunch-money/developer-docs` and permission to read and write repository contents and pull requests. It does not publish documentation or merge its pull request.
 
-Maintainer, contribution support path, and code of conduct remain owner decisions. Contributions are licensed under the repository's [MIT License](LICENSE).
+For contribution questions, email [dev-support@lunchmoney.app](mailto:dev-support@lunchmoney.app) or ask in the [developers channel on Discord](https://discord.com/channels/842337014556262411/1134594318414389258). [Join the Lunch Money Discord](https://lunchmoney.app/discord) if needed. Report security concerns privately by email rather than in Discord or a public issue.
+
+Contributions are licensed under the repository's [MIT License](LICENSE).

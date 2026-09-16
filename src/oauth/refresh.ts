@@ -22,10 +22,11 @@ export type RefreshResult =
     }
 
 /**
- * Narrow, replaceable per-connection exclusion boundary.
+ * Prevents two refresh requests from using the same connection's refresh token
+ * at the same time.
  *
- * Production implementations need a distributed lock or equivalent operation
- * serialization spanning every process that can refresh the same grant.
+ * A production implementation must coordinate every server process that can
+ * refresh the connection, not just requests handled by one Node.js process.
  */
 export interface RefreshCoordinator {
   runExclusive<T>(
@@ -38,11 +39,14 @@ export interface RefreshCoordinator {
 }
 
 /**
- * Rotates one connection's credentials without exposing them to the browser.
+ * Called when a connected user chooses **Refresh access token**. Uses the saved
+ * refresh token on the server and replaces the connection's credentials without
+ * exposing either the old or new values to the browser.
  *
- * A successful provider response is persisted as one complete replacement set.
- * If that write fails, the old refresh token has already been consumed: this
- * function never restores or retries it and instead requires reauthorization.
+ * Lunch Money stops accepting the refresh token that was just used, so all new
+ * token values must be saved together. If saving them fails, this function does
+ * not retry the old token and tells the application to require authorization
+ * again.
  */
 export async function refreshConnection(
   protocol: OAuthProtocolClient,
@@ -74,7 +78,8 @@ export async function refreshConnection(
         try {
           await store.delete(owner.applicationUserId, owner.connectionId)
         } catch {
-          // A durable production terminal marker must survive a failed cleanup.
+          // Production storage must remember that authorization is required even
+          // when deleting the unusable credentials also fails.
         } finally {
           coordinator.markReauthorizationRequired(owner)
         }
@@ -100,12 +105,12 @@ export async function refreshConnection(
       )
       return { status: 'refreshed' } as const
     } catch {
-      // The provider already consumed the old refresh token. Best-effort deletion
-      // prevents reuse; the coordinator also poisons this connection if deletion fails.
+      // Lunch Money already consumed the old refresh token. Try to delete the
+      // unusable credentials and always remember that authorization is required.
       try {
         await store.delete(owner.applicationUserId, owner.connectionId)
       } catch {
-        // The exclusion boundary prevents this process from reusing the stale set.
+        // This process still blocks another refresh from reusing the stale values.
       } finally {
         coordinator.markReauthorizationRequired(owner)
       }

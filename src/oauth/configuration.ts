@@ -38,11 +38,12 @@ export interface OAuthConfiguration {
 }
 
 /**
- * Discovers Lunch Money metadata and returns the small protocol boundary used by
- * this sample. `openid-client` validates discovery metadata, callback state,
- * authorization responses, and token responses. The application still owns
- * user authentication, attempt storage, redirect URI configuration, credential
- * storage, authorization decisions, error redaction, and lifecycle cleanup.
+ * Called during server startup to discover Lunch Money's OAuth endpoints and
+ * configure the `openid-client` operations used by the sample. The library
+ * validates discovery metadata, callback state, authorization responses, and
+ * token responses. The application still authenticates its users, saves pending
+ * attempts and credentials, configures the exact redirect URI, presents safe
+ * errors, and removes data when a connection or application account ends.
  */
 export async function createOpenIdClient(
   configuration: OAuthConfiguration,

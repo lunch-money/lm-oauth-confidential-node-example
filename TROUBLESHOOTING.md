@@ -10,7 +10,7 @@ Confirm `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`, and `LUN
 
 Use the issuer exactly as documented in the Lunch Money Developer Portal. It must expose authorization-server metadata and be reachable by Node. Do not substitute a private repository or undocumented local service. Check proxy/TLS settings without logging credentials.
 
-For the published preview walkthrough, set `LUNCH_MONEY_API_BASE_URL` to `https://api-alpha.lunchmoney.dev/`. The sample requires HTTPS for this remote service origin.
+Set `LUNCH_MONEY_API_BASE_URL` to the API base URL for the environment where your OAuth client is registered. Preview participants receive this value with their access instructions; generally available environments publish it in the official Lunch Money OAuth documentation. Do not guess or copy an endpoint from another environment. The sample requires HTTPS for a remote service origin.
 
 ## Redirect URI mismatch
 
@@ -46,11 +46,11 @@ If you registered `offline_access`, use **Refresh access token**. Otherwise reau
 
 ## Refresh says authorization is required
 
-Refresh returned terminal `invalid_grant`, returned an incomplete rotated response, or Lunch Money rotated successfully but the sample could not persist the replacement. The old refresh token must not be retried: it may already be consumed, and replay can revoke the entire grant family. Choose **Connect Lunch Money** to perform a fresh authorization.
+Lunch Money rejected the refresh token with `invalid_grant`, returned an incomplete replacement, or issued new credentials that the sample could not save. Do not retry the old refresh token: Lunch Money may already have consumed it, and reusing it can invalidate every refresh token descended from the same authorization. Choose **Connect Lunch Money** to authorize again.
 
 ## Refresh is temporarily unavailable or already in progress
 
-A provider/network error retains the current set for a later deliberate retry. An in-progress result means this connection already has a refresh call running; wait for it rather than starting another. Production needs distributed per-connection serialization, retry limits/backoff for transient errors, and safe telemetry. Never log token requests or responses.
+A provider or network error leaves the current credentials available for a later deliberate retry. An in-progress result means this connection already has a refresh request running; wait for it rather than starting another. A production application must prevent two servers from refreshing the same connection at once, limit and delay retries for temporary failures, and record failures without credentials. Never log token requests or responses.
 
 ## Revocation verification does not return 401
 

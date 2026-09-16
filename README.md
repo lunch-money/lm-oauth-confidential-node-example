@@ -6,102 +6,55 @@ The browser never receives the client secret, PKCE verifier, authorization code 
 
 > This is a teaching sample, not a production-ready application. Its fixed demo user and in-memory stores provide neither real authentication nor durable multi-user isolation. It does demonstrate browser-session binding, finite one-time attempts, and CSRF-protected forms.
 
+## Is this the right sample for my application?
+
+Use this confidential-client sample when:
+
+- your application has a backend server you control;
+- that server can keep a client secret and OAuth credentials away from browsers and installed applications;
+- the server performs the OAuth code exchange and Lunch Money API calls; and
+- your application has, or will have, its own server-side user authentication.
+
+Use a native/public-client sample instead when:
+
+- your application is installed directly on a phone or computer;
+- there is no trusted application server that can hold a client secret;
+- credentials must be stored with platform facilities such as Keychain or Android Keystore; and
+- the installed application performs OAuth with PKCE and without a client secret.
+
+A responsive interface does not determine the OAuth client type. A responsive web application backed by a trusted server can be a confidential client. A browser-only single-page application cannot safely contain a client secret.
+
+> [!NOTE]
+> You can install, build, test, and study this repository without Lunch Money OAuth access. The automated tests use mocked Lunch Money responses. Completing the real walkthrough requires a registered OAuth client and the API base URL supplied with access.
+
 ## Run the sample with your OAuth client
 
-Follow this path to authorize a real confidential OAuth client, call the real Lunch Money API, and revoke access before studying the implementation.
+[`docs/WALKTHROUGH.md`](docs/WALKTHROUGH.md) is the canonical first-run guide. It walks through registering a confidential client, configuring the sample, authorizing a real Lunch Money budgeting account, calling `/v2/me`, optionally testing refresh, revoking access, and starting again.
 
-### 1. Clone the repository
+Begin by cloning and building the sample:
 
 ```sh
 git clone https://github.com/lunch-money/lm-oauth-confidential-node-example.git
 cd lm-oauth-confidential-node-example
-```
-
-### 2. Install dependencies
-
-Use Node.js 20 or newer and npm 11.6.2.
-
-```sh
 npm ci
+npm run build
 ```
 
-### 3. Register the OAuth client
+Use Node.js 20 or newer and npm 11.6.2. Then continue with [Register a confidential client](docs/WALKTHROUGH.md#2-register-a-confidential-client). Keep the sample local: it has a fixed demo identity and stores sessions and credentials only in memory.
 
-In the Lunch Money Developer Portal, create a **Confidential web client** with:
+## How credentials stay with the right application user
 
-- the exact redirect URI `http://localhost:4002/oauth/callback`;
-- the `me:read` scope;
-- optionally `offline_access` if you want to run the refresh step; and
-- a client secret that you retain securely when Lunch Money shows it. The secret is shown only once.
+Before redirecting to Lunch Money, an application must remember which signed-in application user started the connection and which browser session made the request. When Lunch Money redirects back, the callback must match both saved values. The application then stores the credentials for that user and connection; callback parameters and form fields never decide who owns them.
 
-Lunch Money assigns an immutable registered scope set. The sample deliberately omits `scope` from its authorization request. Decide whether this client needs `offline_access` before registration: adding it later requires a replacement client registration and new authorization, not an authorization-URL change.
+The sample represents its one application user as `local-demo-user`. A real application replaces it with an application-specific ID obtained from its authenticated server-side session. That ID should not be an email address or other personally identifiable information.
 
-While the client is in development, the same Lunch Money user who created it must perform the authorization. Other Lunch Money users cannot authorize the client until Lunch Money approves it.
-
-### 4. Configure the local process
-
-Set the following values in the local process environment. Replace every placeholder with the corresponding public value or credential:
-
-```sh
-export OAUTH_CLIENT_ID='YOUR_CLIENT_ID'
-export OAUTH_CLIENT_SECRET='YOUR_CLIENT_SECRET'
-export OAUTH_REDIRECT_URI='http://localhost:4002/oauth/callback'
-export LUNCH_MONEY_API_BASE_URL='https://api-alpha.lunchmoney.dev/'
-```
-
-For this preview, the sample uses `LUNCH_MONEY_API_BASE_URL` for OAuth discovery, token operations, and Lunch Money API requests. Use the value above to match the API environment used by the Developer Portal. `PORT` is optional and defaults to `4002`.
-
-For this local-only sample, omitting `SESSION_SECRET` generates a fresh random cookie-signing secret each time the process starts. Restarting already clears all in-memory sessions, attempts, and credentials. A production application must instead provide its own strong `SESSION_SECRET` and keep it stable across restarts; do not rotate it for each authorization.
-
-Keep the client secret in a private local shell session or an untracked secret manager. Never paste credentials into AI chats or prompts, documentation, screenshots, browser code, committed files, or commands retained in shared shell history.
-
-### 5. Start the sample
-
-```sh
-npm run dev
-```
-
-Open `http://localhost:4002`.
-
-If a form returns **Invalid CSRF token**, reload the home page and try again. This commonly happens when the development server restarts and clears its in-memory browser session while an older page remains open; leaving an unchanged running sample open does not expire the form token. See [Troubleshooting](TROUBLESHOOTING.md#a-form-returns-invalid-csrf-token) for details.
-
-### 6. Complete the real flow
-
-> **This is a real OAuth flow.** The OAuth client, Lunch Money user, selected budgeting account, authorization, tokens, API calls, and revocation are real. Only the automated tests mock Lunch Money HTTP responses. The running sample connects to the real Lunch Money services you configured above.
-
-1. Choose **Connect Lunch Money**.
-2. Sign into Lunch Money as the real user who owns the development client.
-3. Select one of that user's real budgeting accounts and approve access. The browser returns to `http://localhost:4002/oauth/callback`.
-4. Choose **Call /v2/me**. The server calls the real `GET /v2/me` endpoint, validates the response against the documented user schema, and shows those profile fields without exposing the OAuth credential in its HTML.
-5. If you registered `offline_access`, choose **Refresh access token**. The server uses the server-held refresh token, receives rotated access and refresh tokens, and atomically replaces the complete credential set. The browser sees only a safe outcome. Without `offline_access`, this action is absent.
-6. Choose **Revoke and verify**. For an offline grant the server revokes the refresh token (revoking the grant); otherwise it revokes the access token. It then retries `GET /v2/me` with the old access token, requires a `401`, and deletes the local credential.
-7. Use **Local reset only** when you only want to clear the sample's local credential and browser session. It does **not** revoke access at Lunch Money. Revoke first when you intend to end that access.
-
-Lunch Money rotates the refresh token on every successful refresh. If refresh returns `invalid_grant`, the sample does not retry: the token may be expired, revoked, already consumed, or invalid, and replay can invalidate the grant family. It discards local credentials and requires authorization again. If Lunch Money rotates successfully but saving the replacement fails, the old refresh token is already consumed; the sample never restores or retries it and requires authorization again.
-
-The sample is single-user. Internally, it stores credentials under a fixed local identifier named `local-demo-user`. This replaces only the login and user database that your own application would normally provide; it does not mock the Lunch Money user, OAuth client, authorization, tokens, or API requests.
-
-A real multi-user confidential application must replace `local-demo-user` with the stable user ID from its authenticated server-side session and associate every saved Lunch Money connection with that application user. This walkthrough demonstrates one application user with one Lunch Money connection.
-
-Lunch Money redirects your browser to `localhost`; its remote server does not connect directly to your computer. This walkthrough therefore needs no deployment, public callback server, or ngrok tunnel.
-
-> **Keep this sample local.** Its fixed application identity and in-memory stores are not safe for public deployment. Restarting the process clears its in-memory sessions, authorization attempts, and credentials. Review [SECURITY.md](SECURITY.md) and [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md) before adapting it. If a step differs from the expected flow, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
-
-After completing the flow, continue with the credential-ownership explanation and code-reading order below.
-
-## Credential ownership is an application boundary
-
-A production application must authenticate its own user first and bind the authorization attempt to both that stable server-side identity and the initiating application browser session. This sample records opaque `applicationUserId`, `connectionId`, and server-derived `applicationSessionId` values before redirect. Callback completion requires the same user and session; none may come from callback parameters or form input. Verified credentials are stored under the stable user and connection. Never use email or another browser-submitted ID as the owner.
-
-Authorization attempts are single-use and expire after an illustrative five minutes. The in-memory store deletes an attempt whenever callback consumption is tried, including when it has expired. Five minutes is sample application policy, not a Lunch Money protocol or token-lifetime guarantee.
-
-The [`CredentialStore`](src/oauth/tokens.ts) API makes this dependency visible. The included adapter is only an in-memory demonstration. Real applications need durable encrypted storage, tenant isolation, key management, atomic writes, access controls, and cleanup on disconnect, sign-out/account switching, and account deletion. This repository intentionally offers no toy database schema as production advice.
+Each authorization attempt works once and expires after five minutes. That duration is a choice made by this sample, not a Lunch Money token lifetime. The [`CredentialStore`](src/oauth/tokens.ts) shows where an application supplies secure credential storage. The included implementation keeps everything in memory; production applications need encrypted durable storage, strict separation between users, safe key management, reliable complete-token updates, and lifecycle cleanup.
 
 ## What `openid-client` does—and does not do
 
-It discovers and validates authorization-server metadata, generates standards-compliant random state/PKCE material, builds the authorization URL, validates the authorization response and expected state, exchanges the code, performs the refresh-token grant with confidential client authentication, validates token responses, and performs token revocation.
+It handles the OAuth protocol details: discovering Lunch Money's OAuth endpoints, creating state and PKCE values, building the authorization URL, checking the callback, exchanging the code, refreshing credentials, and revoking them.
 
-Your application remains responsible for authenticating its user, deriving trustworthy user/session identities, choosing and enforcing attempt lifetime, exact redirect registration, omitting Lunch Money's authorization-time scope, storing credentials under the correct tenant, serializing refresh per connection, atomically persisting rotations, handling terminal recovery, deciding when to call APIs/revoke/reset, protecting sessions and POST actions, redacting telemetry, and presenting safe errors. The runnable Hono forms include a random per-session CSRF token stored server-side and checked in constant time on `/oauth/start`, `/me`, `/refresh`, `/revoke`, and `/reset`; production must integrate equivalent protection with its own session architecture.
+Your application still has to authenticate its users, remember who started each connection, protect browser sessions and forms, save credentials for the right user, prevent two refreshes from using the same token at once, save replacement tokens together, and keep secrets out of browser responses and logs. The deeper responsibilities are documented in [SECURITY.md](SECURITY.md) and [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md).
 
 ## Code map and reading order
 
@@ -127,13 +80,12 @@ There is no native/Expo flow, backend-assisted mobile handoff, generic API explo
 
 Run `npm run check` for formatting, lint, typechecking, tests, and a production TypeScript build. Also see [ARCHITECTURE.md](ARCHITECTURE.md), [SECURITY.md](SECURITY.md), and [PRODUCTION_CHECKLIST.md](PRODUCTION_CHECKLIST.md).
 
-Public materials: [Lunch Money developer getting started](https://lunchmoney.dev/getting-started), [v2 API overview](https://lunchmoney.dev/v2/overview), and [interactive v2 API reference](https://alpha.lunchmoney.dev/v2/docs). OAuth registration/issuer details must come from the current Developer Portal while the OAuth program is in preview.
+Public materials: [Lunch Money developer getting started](https://lunchmoney.dev/getting-started) and the [v2 API overview](https://lunchmoney.dev/v2/overview). OAuth registration, API base URL, and issuer details must come from the Lunch Money environment where your client is registered.
 
-## Project, support, license, and provenance
+## Get help
 
-- Status: public Lunch Money developer reference.
-- Maintainer and dependency-update owner: **publication blocker—must be named by the repository owner**.
-- Support and security-reporting channel: **publication blocker—must be selected by the repository owner**.
-- License: [MIT](LICENSE), copyright 2026 Lunch Money.
-- Provenance: curated from the confidential server/web portions of `lunch-money-oauth-demo` at source commit `100e6aaaa7130250c76891cfef86691f53971892`; old Git history and the plaintext token logger were intentionally not copied.
-- Repository: [github.com/lunch-money/lm-oauth-confidential-node-example](https://github.com/lunch-money/lm-oauth-confidential-node-example).
+For questions about this sample or Lunch Money's developer platform, email [dev-support@lunchmoney.app](mailto:dev-support@lunchmoney.app) or ask in the [developers channel on Discord](https://discord.com/channels/842337014556262411/1134594318414389258). [Join the Lunch Money Discord](https://lunchmoney.app/discord) if you are not already a member.
+
+Send potential security concerns privately to [dev-support@lunchmoney.app](mailto:dev-support@lunchmoney.app), not to Discord or a public GitHub issue. Never include live credentials or personal financial data in a report.
+
+This project is maintained by Lunch Money and licensed under the [MIT License](LICENSE).

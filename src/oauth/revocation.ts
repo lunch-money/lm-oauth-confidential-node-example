@@ -8,8 +8,10 @@ import type {
 } from './types.js'
 
 /**
- * Revokes the authenticated user's access token, verifies the old token is no
- * longer accepted by `/v2/me`, and deletes that same user's local credential.
+ * Called when the connected user chooses **Revoke and verify**. Revokes the
+ * refresh token when one exists, ending continuing access; otherwise it revokes
+ * the access token. It then confirms that `/v2/me` rejects the old access token
+ * before deleting that user's locally stored credentials.
  */
 export async function revokeAndVerify(
   protocol: OAuthProtocolClient,

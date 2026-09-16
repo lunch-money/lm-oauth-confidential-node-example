@@ -19,9 +19,11 @@ const lunchMoneyProfileSchema = z
 export type LunchMoneyProfile = z.infer<typeof lunchMoneyProfileSchema>
 
 /**
- * Calls Lunch Money `GET /v2/me` with a server-held access token and returns a
- * validated user profile. Throws safe errors for missing grants, insufficient
- * scope, malformed JSON, network failures, and other non-success responses.
+ * Called when the connected application user chooses **Call /v2/me**. Loads
+ * that user's server-held access token, calls Lunch Money, and returns a
+ * validated profile without exposing the token. Throws safe errors when no
+ * connection exists, `me:read` is missing, the response is malformed, or the
+ * request fails.
  */
 export async function readLunchMoneyProfile(
   store: CredentialStore,

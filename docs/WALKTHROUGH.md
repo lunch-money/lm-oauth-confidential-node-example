@@ -69,10 +69,10 @@ In the same terminal, set the client ID and secret from the Developer Portal:
 export OAUTH_CLIENT_ID='YOUR_CLIENT_ID'
 export OAUTH_CLIENT_SECRET='YOUR_CLIENT_SECRET'
 export OAUTH_REDIRECT_URI='http://localhost:4002/oauth/callback'
-export LUNCH_MONEY_API_BASE_URL='https://api-alpha.lunchmoney.dev/'
+export LUNCH_MONEY_API_BASE_URL='{{LUNCH_MONEY_API_BASE_URL}}'
 ```
 
-The sample uses `LUNCH_MONEY_API_BASE_URL` for OAuth discovery, token operations, and Lunch Money API requests. A real application should also use [OAuth discovery](https://lunchmoney.dev/oauth/authorization-code#configure-lunch-money-with-discovery) instead of hard-coding authorization, token, and revocation endpoint URLs. `PORT` is optional and defaults to `4002`.
+The Developer Portal replaces `{{LUNCH_MONEY_API_BASE_URL}}` with the API base URL for the environment where you registered the client. If you are reading this walkthrough in the sample repository, use the API base URL provided with your Lunch Money OAuth access. The sample uses that one value for OAuth discovery, token operations, and Lunch Money API requests. A real application should also use [OAuth discovery](https://lunchmoney.dev/oauth/authorization-code#configure-lunch-money-with-discovery) instead of hard-coding authorization, token, and revocation endpoint URLs. `PORT` is optional and defaults to `4002`.
 
 `SESSION_SECRET` is also optional for this local sample. If it is absent, the process creates a new random cookie-signing secret when it starts. Because all browser sessions, authorization attempts, and credentials are held in memory and cleared on restart, the generated secret can be cleared at the same time. A production application must instead provide a strong `SESSION_SECRET`, keep it stable across restarts, and not rotate it for each OAuth authorization.
 

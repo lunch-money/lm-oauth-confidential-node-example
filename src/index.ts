@@ -1,3 +1,4 @@
+// Load a repository-root `.env` file when present. Existing process environment wins.
 import 'dotenv/config'
 import { createOpenIdClient } from './oauth/index.js'
 import {

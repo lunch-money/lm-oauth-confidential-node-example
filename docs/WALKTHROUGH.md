@@ -76,6 +76,8 @@ The Developer Portal replaces `{{LUNCH_MONEY_API_BASE_URL}}` with the API base U
 
 `SESSION_SECRET` is also optional for this local sample. If it is absent, the process creates a new random cookie-signing secret when it starts. Because all browser sessions, authorization attempts, and credentials are held in memory and cleared on restart, the generated secret can be cleared at the same time. A production application must instead provide a strong `SESSION_SECRET`, keep it stable across restarts, and not rotate it for each OAuth authorization.
 
+Alternatively, copy [`.env.example`](../.env.example) to `.env` as described in [Load settings from a `.env` file](../README.md#load-settings-from-a-env-file).
+
 > [!WARNING]
 > **Keep credentials private**
 > Keep the client secret in a private local environment or secret manager. Never paste it into documentation, AI chats or prompts, committed files, screenshots, browser code, logs, support requests, or commands retained in shared shell history.

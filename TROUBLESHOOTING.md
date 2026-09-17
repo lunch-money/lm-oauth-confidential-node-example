@@ -4,7 +4,7 @@ The sample intentionally returns short errors and does not print upstream bodies
 
 ## Startup configuration fails
 
-Confirm `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`, and `LUNCH_MONEY_API_BASE_URL` are present in the process environment. The local sample generates a cookie-signing secret when `SESSION_SECRET` is omitted; if you set it explicitly, it must contain at least 32 characters. Inspect or change your secret configuration yourself; do not paste it into an issue or log.
+Confirm `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`, and `LUNCH_MONEY_API_BASE_URL` are present in the process environment or a repository-root `.env` file. See [Load settings from a `.env` file](README.md#load-settings-from-a-env-file) for the file-based option. The local sample generates a cookie-signing secret when `SESSION_SECRET` is omitted; if you set it explicitly, it must contain at least 32 characters. Inspect or change your secret configuration yourself; do not paste it into an issue or log.
 
 ## Discovery or network failure
 

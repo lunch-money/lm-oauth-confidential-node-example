@@ -9,7 +9,14 @@ import type {
 
 const COOKIE_NAME = 'lm_oauth_sample'
 
-/** Reads or creates an opaque server-side session selected by a signed browser cookie. */
+/**
+ * Call for each demonstration request to load or create its browser session.
+ * The cookie contains only a random ID whose signature lets the server detect
+ * modification; the actual session data stays in server memory. This keeps one
+ * browser's OAuth callback tied to the browser that started it, but it does not
+ * sign a user in and is not a replacement for the integrating application's
+ * authentication and session management.
+ */
 export async function browserSession(
   context: Context,
   configuration: ApplicationConfiguration,
@@ -33,7 +40,7 @@ export async function browserSession(
   }
   const id = randomBytes(32).toString('base64url')
   const value = store.create(id, randomBytes(32).toString('base64url'))
-  // Security invariant: the cookie holds only an opaque signed locator, never OAuth credentials or PKCE material.
+  // Security invariant: the cookie holds only a signed random lookup ID; OAuth credentials, PKCE values, and session data stay on the server.
   await setSignedCookie(context, COOKIE_NAME, id, configuration.sessionSecret, {
     httpOnly: true,
     sameSite: 'Lax',
@@ -46,7 +53,7 @@ export async function browserSession(
   }
 }
 
-/** Clears the browser's opaque session locator. */
+/** Clears the browser's signed session lookup ID when the local demo resets. */
 export function clearBrowserCookie(context: Context): void {
   deleteCookie(context, COOKIE_NAME, { path: '/' })
 }

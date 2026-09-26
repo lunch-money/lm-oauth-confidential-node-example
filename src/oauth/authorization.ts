@@ -9,11 +9,26 @@ import type {
 /** Illustrative five-minute attempt lifetime; this is application policy, not a Lunch Money token guarantee. */
 export const AUTHORIZATION_ATTEMPT_TTL_MS = 5 * 60 * 1000
 
-/** Stores each pending connection request until Lunch Money redirects the browser back. */
+/**
+ * Saves the server-only details needed after Lunch Money redirects the browser
+ * back. A production implementation replaces this store with short-lived,
+ * shared storage so any server instance handling the callback can find the
+ * attempt that the signed-in user started.
+ */
 export interface AuthorizationAttemptStore {
-  /** Saves an attempt already bound to an authenticated application user. */
+  /**
+   * Call this before redirecting the browser to Lunch Money. The application
+   * has already attached its authenticated user and current browser session,
+   * so neither identity needs to be accepted from the returning URL.
+   */
   save(attempt: AuthorizationAttempt): Promise<void>
-  /** Atomically consumes a non-expired attempt by state, removing expired attempts and preventing replay. */
+  /**
+   * Call this when the browser returns, using the unpredictable `state` value
+   * from the callback. Return and delete a matching, unexpired attempt as one
+   * operation; also delete an expired match. Deleting on first use prevents a
+   * copied callback from reusing the saved PKCE verifier or connection context,
+   * even if a later callback check or token exchange fails.
+   */
   consume(state: string): Promise<AuthorizationAttempt | undefined>
 }
 

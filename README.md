@@ -6,6 +6,8 @@ The browser never receives the client secret, PKCE verifier, authorization code 
 
 > This is a teaching sample, not a production-ready application. Its fixed demo user and in-memory stores provide neither real authentication nor durable multi-user isolation. It does demonstrate browser-session binding, finite one-time attempts, and CSRF-protected forms.
 
+This is a confidential client. Its trusted server keeps the client secret, performs the authorization-code exchange, and owns the OAuth credentials. If your installed application performs the exchange itself without a client secret, use the [native Expo sample](https://github.com/lunch-money/lm-oauth-native-expo-example). A responsive UI does not decide the client type—the credential boundary does.
+
 ## Is this the right sample for my application?
 
 Use this confidential-client sample when:

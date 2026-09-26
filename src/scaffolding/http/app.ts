@@ -26,7 +26,9 @@ import {
   clearBrowserCookie,
 } from '../session/session-cookie.js'
 
-// Demonstration identity only. Production must obtain this from its own authenticated server session.
+// Replace this fixed teaching identity with the application user ID read from
+// your authenticated server session on every request. Never accept the OAuth
+// credential owner from a form field, query parameter, or callback value.
 const DEMO_APPLICATION_USER_ID = 'local-demo-user' as ApplicationUserId
 const DEMO_CONNECTION_ID = 'default' as ConnectionId
 
@@ -39,9 +41,11 @@ export interface AppDependencies {
 }
 
 /**
- * Creates the thin Hono adapter. Routes use a fixed demo identity so the sample
- * can run without an application login; this is not multi-user authentication
- * or isolation and must be replaced in production.
+ * Call during server startup to connect HTTP requests to the framework-neutral
+ * OAuth teaching functions. Routes use a fixed demo identity so the sample can
+ * run without an application login. A real application must replace it with the
+ * user ID from its authenticated server session before storing, reading,
+ * refreshing, revoking, or deleting that user's credentials.
  */
 export function createApp(
   configuration: ApplicationConfiguration,
@@ -104,6 +108,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      // The Connect form starts OAuth for the user and browser session established by the server above.
       const url = await startAuthorization(protocol, attempts, {
         ...owner,
         applicationSessionId: session.id,
@@ -124,6 +129,7 @@ export function createApp(
       browserSessions,
     )
     try {
+      // Lunch Money returns here; completeAuthorization checks the saved attempt before storing credentials for its owner.
       await completeAuthorization(
         protocol,
         attempts,
@@ -152,6 +158,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      // The profile button makes a server-side API call with credentials stored for this application user.
       session.value.profile = await readLunchMoneyProfile(
         credentials,
         owner,
@@ -175,6 +182,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      // The refresh button asks the teaching workflow to replace this connection's credential set safely.
       session.value.refresh = await refreshConnection(
         protocol,
         credentials,
@@ -205,6 +213,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      // The disconnect button revokes server-held credentials, verifies the old access token, and removes the local set.
       session.value.revocation = await revokeAndVerify(
         protocol,
         credentials,
@@ -230,6 +239,7 @@ export function createApp(
     if (!(await verifyCsrfToken(context, session.value))) {
       return context.text('Invalid CSRF token.', 403)
     }
+    // Reset clears only this sample's local state; it is not a substitute for revoking access at Lunch Money.
     await deleteCredentials(
       credentials,
       owner.applicationUserId,

@@ -38,7 +38,14 @@ export interface ApplicationConfiguration {
   readonly sessionSecret: string
 }
 
-/** Validates startup configuration and derives the public `/v2/me` endpoint. */
+/**
+ * Call once while starting the confidential server. The application must
+ * supply its registered client ID, client secret, exact redirect URI, and the
+ * Lunch Money API base URL; the client secret and session secret must never be
+ * exposed to the browser or logs. This validates those settings and returns the
+ * typed server, OAuth, and `/v2/me` configuration used by the sample. For local
+ * convenience only, an omitted session secret is generated in memory.
+ */
 export function loadConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
 ): ApplicationConfiguration {
@@ -63,7 +70,11 @@ export function loadConfiguration(
   }
 }
 
-/** Returns only invalid setting names, never rejected values or secret contents. */
+/**
+ * Call when startup validation fails to produce a safe operator-facing
+ * message. It returns setting names and requirements, never rejected values,
+ * client secrets, or session secrets.
+ */
 export function safeConfigurationError(error: unknown): string {
   if (!(error instanceof ZodError))
     return 'OAuth discovery or server startup failed.'

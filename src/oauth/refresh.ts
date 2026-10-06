@@ -1,25 +1,20 @@
 import { OAuthError, RefreshProtocolError } from './errors.js'
 import type { CredentialStore } from './tokens.js'
 import type {
-  AccountId,
   ApplicationUserId,
-  ConnectionId,
+  ConnectionIdentity,
   OAuthProtocolClient,
 } from './types.js'
 
-export type RefreshOwner =
-  | {
-      readonly applicationUserId: ApplicationUserId
-      readonly accountId: AccountId
-    }
-  | {
-      /** @deprecated Transitional support for the original single-connection tests. */
-      readonly applicationUserId: ApplicationUserId
-      readonly connectionId: ConnectionId
-    }
+export interface RefreshOwner extends ConnectionIdentity {
+  readonly applicationUserId: ApplicationUserId
+}
 
-function connectionKey(owner: RefreshOwner): AccountId | ConnectionId {
-  return 'accountId' in owner ? owner.accountId : owner.connectionId
+function connectionIdentity(owner: RefreshOwner): ConnectionIdentity {
+  return {
+    accountId: owner.accountId,
+    lunchMoneyUserId: owner.lunchMoneyUserId,
+  }
 }
 
 /** Safe refresh outcomes; none contains a token or provider response. */
@@ -72,8 +67,8 @@ export async function refreshConnection(
     }
 
   const coordinated = await coordinator.runExclusive(owner, async () => {
-    const key = connectionKey(owner)
-    const current = await store.get(owner.applicationUserId, key)
+    const identity = connectionIdentity(owner)
+    const current = await store.get(owner.applicationUserId, identity)
     if (!current?.credentials.refreshToken)
       return { status: 'refresh_not_available' } as const
 
@@ -88,7 +83,7 @@ export async function refreshConnection(
         // Security invariant: invalid_grant may mean expiry, revocation, or replay;
         // never retry it or reveal which provider condition occurred.
         try {
-          await store.delete(owner.applicationUserId, key)
+          await store.delete(owner.applicationUserId, identity)
         } catch {
           // Production storage must remember that authorization is required even
           // when deleting the unusable credentials also fails.
@@ -119,7 +114,7 @@ export async function refreshConnection(
       // Lunch Money already consumed the old refresh token. Try to delete the
       // unusable credentials and always remember that authorization is required.
       try {
-        await store.delete(owner.applicationUserId, key)
+        await store.delete(owner.applicationUserId, identity)
       } catch {
         // This process still blocks another refresh from reusing the stale values.
       } finally {

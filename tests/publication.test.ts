@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const forbiddenPreviewHosts = [
@@ -11,7 +11,7 @@ const forbiddenPreviewHosts = [
 
 function isPrivateEnvFile(file: string): boolean {
   const base = file.split('/').pop() ?? file
-  return /^\.env(?:\.|$)/.test(base) && base !== '.env.example'
+  return /^\.env(?:\.|$)/.test(base)
 }
 
 describe('public repository content', () => {
@@ -22,6 +22,7 @@ describe('public repository content', () => {
       .split('\0')
       .filter(Boolean)
       .filter((file) => !isPrivateEnvFile(file))
+      .filter((file) => existsSync(file))
 
     const matches = trackedFiles.flatMap((file) => {
       const contents = readFileSync(file, 'utf8')
@@ -33,11 +34,11 @@ describe('public repository content', () => {
     expect(matches).toEqual([])
   })
 
-  it('ships placeholder .env.example settings without live values', () => {
-    const contents = readFileSync('.env.example', 'utf8')
+  it('ships placeholder env.example settings without live values', () => {
+    const contents = readFileSync('env.example', 'utf8')
     const assignment = (name: string): string => {
       const match = contents.match(new RegExp(`^${name}=(.*)$`, 'm'))
-      expect(match, `${name} must be present in .env.example`).toBeTruthy()
+      expect(match, `${name} must be present in env.example`).toBeTruthy()
       return match?.[1] ?? ''
     }
 
@@ -46,7 +47,9 @@ describe('public repository content', () => {
     expect(assignment('OAUTH_REDIRECT_URI')).toBe(
       'http://localhost:4002/oauth/callback',
     )
-    expect(assignment('LUNCH_MONEY_API_BASE_URL')).toBe('YOUR_API_BASE_URL')
+    expect(contents).toMatch(
+      /^# LUNCH_MONEY_API_BASE_URL=YOUR_SUPPORT_SUPPLIED_API_BASE_URL$/m,
+    )
     expect(contents).toMatch(/^# PORT=/m)
     expect(contents).toMatch(/^# SESSION_SECRET=/m)
   })

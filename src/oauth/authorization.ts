@@ -2,7 +2,6 @@ import type {
   ApplicationSessionId,
   ApplicationUserId,
   AuthorizationAttempt,
-  ConnectionId,
   OAuthProtocolClient,
 } from './types.js'
 
@@ -46,8 +45,6 @@ export async function startAuthorization(
   input: {
     applicationSessionId: ApplicationSessionId
     applicationUserId: ApplicationUserId
-    /** @deprecated The selected account is learned from /v2/me after callback. */
-    connectionId?: ConnectionId
     redirectUri: string
   },
   now: () => number = Date.now,
@@ -57,7 +54,6 @@ export async function startAuthorization(
   await attempts.save({
     applicationSessionId: input.applicationSessionId,
     applicationUserId: input.applicationUserId,
-    ...(input.connectionId ? { connectionId: input.connectionId } : {}),
     codeVerifier: created.codeVerifier,
     expiresAt: now() + AUTHORIZATION_ATTEMPT_TTL_MS,
     state: created.state,

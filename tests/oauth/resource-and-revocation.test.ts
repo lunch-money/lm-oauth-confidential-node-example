@@ -2,15 +2,17 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   readLunchMoneyProfile,
   revokeAndVerify,
+  type AccountId,
   type ApplicationUserId,
-  type ConnectionId,
+  type CredentialSet,
 } from '../../src/oauth/index.js'
 import { InMemoryCredentialStore } from '../../src/scaffolding/session/in-memory-stores.js'
 import { FakeProtocolClient } from '../fixtures/fakes.js'
 
 const owner = {
   applicationUserId: 'user' as ApplicationUserId,
-  connectionId: 'primary' as ConnectionId,
+  accountId: 84 as AccountId,
+  lunchMoneyUserId: 42,
 }
 const userProfile = {
   name: 'Demo User',
@@ -22,10 +24,22 @@ const userProfile = {
   api_key_label: null,
 }
 
+async function seed(
+  store: InMemoryCredentialStore,
+  credentials: CredentialSet,
+): Promise<void> {
+  await store.upsert(owner.applicationUserId, {
+    accountId: owner.accountId,
+    budgetName: 'Demo budget',
+    credentials,
+    lunchMoneyUserId: owner.lunchMoneyUserId,
+  })
+}
+
 describe('/v2/me and revocation', () => {
   it('returns the documented user profile and keeps the access token server-side', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'private-token',
       scope: 'me:read',
     })
@@ -52,7 +66,7 @@ describe('/v2/me and revocation', () => {
 
   it('reports missing me:read without returning the upstream body', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'token',
       scope: '',
     })
@@ -72,7 +86,7 @@ describe('/v2/me and revocation', () => {
 
   it('rejects malformed successful responses', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'token',
       scope: 'me:read',
     })
@@ -88,7 +102,7 @@ describe('/v2/me and revocation', () => {
 
   it('rejects successful responses with fields outside the documented user schema', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'token',
       scope: 'me:read',
     })
@@ -108,7 +122,7 @@ describe('/v2/me and revocation', () => {
 
   it('revokes, verifies the old token fails, and then deletes local credentials', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'private-token',
       scope: 'me:read',
     })
@@ -126,14 +140,12 @@ describe('/v2/me and revocation', () => {
     expect(protocol.revoked).toEqual([
       { token: 'private-token', tokenKind: 'access_token' },
     ])
-    expect(
-      await store.get(owner.applicationUserId, owner.connectionId),
-    ).toBeUndefined()
+    expect(await store.get(owner.applicationUserId, owner)).toBeUndefined()
   })
 
   it('revokes the refresh token to revoke an offline grant, then verifies the old access token', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'old-access',
       refreshToken: 'grant-refresh',
       scope: 'me:read offline_access',
@@ -155,7 +167,7 @@ describe('/v2/me and revocation', () => {
 
   it('retains local credentials when post-revocation verification unexpectedly succeeds', async () => {
     const store = new InMemoryCredentialStore()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seed(store, {
       accessToken: 'private-token',
       scope: 'me:read',
     })
@@ -168,8 +180,6 @@ describe('/v2/me and revocation', () => {
         vi.fn<typeof fetch>().mockResolvedValue(Response.json({ id: 42 })),
       ),
     ).rejects.toMatchObject({ code: 'provider_failure' })
-    expect(
-      await store.get(owner.applicationUserId, owner.connectionId),
-    ).toBeDefined()
+    expect(await store.get(owner.applicationUserId, owner)).toBeDefined()
   })
 })

@@ -1,9 +1,8 @@
 import { OAuthError } from './errors.js'
 import type { CredentialStore } from './tokens.js'
 import type {
-  AccountId,
   ApplicationUserId,
-  ConnectionId,
+  ConnectionIdentity,
   OAuthProtocolClient,
   RevocationResult,
 } from './types.js'
@@ -17,15 +16,11 @@ import type {
 export async function revokeAndVerify(
   protocol: OAuthProtocolClient,
   store: CredentialStore,
-  owner:
-    | { applicationUserId: ApplicationUserId; accountId: AccountId }
-    | { applicationUserId: ApplicationUserId; connectionId: ConnectionId },
+  owner: { applicationUserId: ApplicationUserId } & ConnectionIdentity,
   meEndpoint: URL,
   fetcher: typeof fetch = fetch,
 ): Promise<RevocationResult> {
-  const connectionKey =
-    'accountId' in owner ? owner.accountId : owner.connectionId
-  const credentials = await store.get(owner.applicationUserId, connectionKey)
+  const credentials = await store.get(owner.applicationUserId, owner)
   if (!credentials)
     throw new OAuthError(
       'credential_not_found',
@@ -55,7 +50,7 @@ export async function revokeAndVerify(
       )
     }
     // Security invariant: remove only the authenticated owner's local credential after verified revocation.
-    await store.delete(owner.applicationUserId, connectionKey)
+    await store.delete(owner.applicationUserId, owner)
     return { revoked: true, oldCredentialRejected: true }
   } catch (cause) {
     if (cause instanceof OAuthError) throw cause

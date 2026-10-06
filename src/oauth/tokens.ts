@@ -1,8 +1,6 @@
 import type {
-  AccountId,
   ApplicationUserId,
-  ConnectionId,
-  CredentialSet,
+  ConnectionIdentity,
   LunchMoneyConnection,
 } from './types.js'
 
@@ -19,22 +17,16 @@ import type {
 export interface CredentialStore {
   get(
     applicationUserId: ApplicationUserId,
-    accountId: AccountId | ConnectionId,
+    identity: ConnectionIdentity,
   ): Promise<LunchMoneyConnection | undefined>
   list(applicationUserId: ApplicationUserId): Promise<LunchMoneyConnection[]>
   upsert(
     applicationUserId: ApplicationUserId,
     connection: LunchMoneyConnection,
   ): Promise<void>
-  /** @deprecated Transitional adapter for lifecycle callers pending AccountId migration. */
-  replace(
-    applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
-    credentials: CredentialSet,
-  ): Promise<void>
   delete(
     applicationUserId: ApplicationUserId,
-    accountId: AccountId | ConnectionId,
+    identity: ConnectionIdentity,
   ): Promise<boolean>
 }
 
@@ -42,35 +34,16 @@ export interface CredentialStore {
 export async function readCredentials(
   store: CredentialStore,
   applicationUserId: ApplicationUserId,
-  accountId: AccountId | ConnectionId,
+  identity: ConnectionIdentity,
 ): Promise<LunchMoneyConnection | undefined> {
-  return store.get(applicationUserId, accountId)
-}
-
-/**
- * Saves all replacement credential values together after authorization or
- * refresh.
- *
- * Lunch Money stops accepting a refresh token after it is used. A production
- * implementation must therefore save the new access token, refresh token,
- * expiration, and scopes in one operation rather than updating fields one at a
- * time.
- */
-export async function replaceCredentials(
-  store: CredentialStore,
-  applicationUserId: ApplicationUserId,
-  connectionId: ConnectionId,
-  credentials: CredentialSet,
-): Promise<void> {
-  // Security invariant: replacement is scoped to the authenticated owner and connection.
-  await store.replace(applicationUserId, connectionId, credentials)
+  return store.get(applicationUserId, identity)
 }
 
 /** Deletes only local credentials; this does not revoke them at Lunch Money. */
 export async function deleteCredentials(
   store: CredentialStore,
   applicationUserId: ApplicationUserId,
-  accountId: AccountId | ConnectionId,
+  identity: ConnectionIdentity,
 ): Promise<boolean> {
-  return store.delete(applicationUserId, accountId)
+  return store.delete(applicationUserId, identity)
 }

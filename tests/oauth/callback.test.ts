@@ -5,7 +5,6 @@ import {
   type ApplicationSessionId,
   type ApplicationUserId,
   type AuthorizationAttempt,
-  type ConnectionId,
 } from '../../src/oauth/index.js'
 import {
   InMemoryAuthorizationAttemptStore,
@@ -15,11 +14,9 @@ import { FakeProtocolClient } from '../fixtures/fakes.js'
 
 const user = 'app-user-a' as ApplicationUserId
 const session = 'browser-session-a' as ApplicationSessionId
-const connection = 'primary' as ConnectionId
 const attempt: AuthorizationAttempt = {
   applicationSessionId: session,
   applicationUserId: user,
-  connectionId: connection,
   state: 'expected',
   codeVerifier: 'verifier',
   expiresAt: Number.MAX_SAFE_INTEGER,
@@ -55,12 +52,16 @@ describe('OAuth callback', () => {
       async () => profileResponse(),
     )
 
-    expect(owner).toEqual({ applicationUserId: user, accountId: 84 })
+    expect(owner).toEqual({
+      applicationUserId: user,
+      accountId: 84,
+      lunchMoneyUserId: 42,
+    })
     expect(
-      await credentials.get(
-        user,
-        84 as import('../../src/oauth/index.js').AccountId,
-      ),
+      await credentials.get(user, {
+        accountId: 84 as import('../../src/oauth/index.js').AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toEqual({
       accountId: 84,
       budgetName: 'Demo budget',
@@ -95,10 +96,10 @@ describe('OAuth callback', () => {
       async () => profileResponse(),
     )
     expect(
-      await credentials.get(
-        user,
-        84 as import('../../src/oauth/index.js').AccountId,
-      ),
+      await credentials.get(user, {
+        accountId: 84 as import('../../src/oauth/index.js').AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toMatchObject({ credentials: protocol.credentials })
     expect(protocol.refreshed).toHaveLength(0)
   })

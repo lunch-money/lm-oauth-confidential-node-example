@@ -19,6 +19,8 @@ const secureOrLoopbackUrl = z
     },
   )
 
+export const DEFAULT_API_BASE_URL = 'https://api.lunchmoney.dev'
+
 const schema = z.object({
   NODE_ENV: z
     .enum(['development', 'production', 'test'])
@@ -26,7 +28,7 @@ const schema = z.object({
   OAUTH_CLIENT_ID: z.string().min(1),
   OAUTH_CLIENT_SECRET: z.string().min(1),
   OAUTH_REDIRECT_URI: z.string().url(),
-  LUNCH_MONEY_API_BASE_URL: secureOrLoopbackUrl,
+  LUNCH_MONEY_API_BASE_URL: secureOrLoopbackUrl.default(DEFAULT_API_BASE_URL),
   SESSION_SECRET: z.string().min(32).optional(),
   PORT: z.coerce.number().int().positive().default(4002),
 })
@@ -40,11 +42,13 @@ export interface ApplicationConfiguration {
 
 /**
  * Call once while starting the confidential server. The application must
- * supply its registered client ID, client secret, exact redirect URI, and the
- * Lunch Money API base URL; the client secret and session secret must never be
- * exposed to the browser or logs. This validates those settings and returns the
- * typed server, OAuth, and `/v2/me` configuration used by the sample. For local
- * convenience only, an omitted session secret is generated in memory.
+ * supply its registered client ID, client secret, and exact redirect URI. The
+ * Lunch Money API base URL defaults to production and can be overridden for an
+ * environment-specific client registration. The client secret and session
+ * secret must never be exposed to the browser or logs. This validates those
+ * settings and returns the typed server, OAuth, and `/v2/me` configuration used
+ * by the sample. For local convenience only, an omitted session secret is
+ * generated in memory.
  */
 export function loadConfiguration(
   environment: NodeJS.ProcessEnv = process.env,

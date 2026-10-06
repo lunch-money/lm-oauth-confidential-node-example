@@ -27,6 +27,7 @@ export async function completeAuthorization(
 ): Promise<{
   applicationUserId: ApplicationUserId
   accountId: AccountId
+  lunchMoneyUserId: number
 }> {
   const error = callbackUrl.searchParams.get('error')
   const state = callbackUrl.searchParams.get('state')
@@ -101,5 +102,6 @@ export async function completeAuthorization(
   return {
     applicationUserId: attempt.applicationUserId,
     accountId,
+    lunchMoneyUserId: profile.id,
   }
 }

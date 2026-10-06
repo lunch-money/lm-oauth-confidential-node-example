@@ -1,7 +1,11 @@
 import { z } from 'zod'
 import { OAuthError } from './errors.js'
 import type { CredentialStore } from './tokens.js'
-import type { AccountId, ApplicationUserId, CredentialSet } from './types.js'
+import type {
+  ApplicationUserId,
+  ConnectionIdentity,
+  CredentialSet,
+} from './types.js'
 
 const lunchMoneyProfileSchema = z
   .object({
@@ -71,18 +75,11 @@ export async function identifyLunchMoneyConnection(
  */
 export async function readLunchMoneyProfile(
   store: CredentialStore,
-  owner:
-    | { applicationUserId: ApplicationUserId; accountId: AccountId }
-    | {
-        applicationUserId: ApplicationUserId
-        connectionId: import('./types.js').ConnectionId
-      },
+  owner: { applicationUserId: ApplicationUserId } & ConnectionIdentity,
   meEndpoint: URL,
   fetcher: typeof fetch = fetch,
 ): Promise<LunchMoneyProfile> {
-  const connectionKey =
-    'accountId' in owner ? owner.accountId : owner.connectionId
-  const credentials = await store.get(owner.applicationUserId, connectionKey)
+  const credentials = await store.get(owner.applicationUserId, owner)
   if (!credentials)
     throw new OAuthError(
       'credential_not_found',

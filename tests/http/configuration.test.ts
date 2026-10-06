@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_API_BASE_URL,
   loadConfiguration,
   safeConfigurationError,
 } from '../../src/scaffolding/configuration.js'
 
 describe('startup configuration', () => {
+  it('defaults OAuth discovery and API calls to the production origin', () => {
+    const value = loadConfiguration({
+      OAUTH_CLIENT_ID: 'client',
+      OAUTH_CLIENT_SECRET: 'server-secret',
+      OAUTH_REDIRECT_URI: 'http://localhost:4002/oauth/callback',
+    })
+
+    expect(value.oauth.issuer.href).toBe(`${DEFAULT_API_BASE_URL}/`)
+    expect(value.oauth.meEndpoint.href).toBe(`${DEFAULT_API_BASE_URL}/v2/me`)
+  })
+
   it('uses the configured Lunch Money API origin for OAuth and API calls', () => {
     const value = loadConfiguration({
       NODE_ENV: 'test',

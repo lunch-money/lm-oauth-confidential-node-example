@@ -372,10 +372,10 @@ describe('Hono scaffolding', () => {
     ).toHaveLength(2)
     expect(
       (
-        await credentials.get(
-          'local-demo-user' as ApplicationUserId,
-          84 as AccountId,
-        )
+        await credentials.get('local-demo-user' as ApplicationUserId, {
+          accountId: 84 as AccountId,
+          lunchMoneyUserId: 42,
+        })
       )?.credentials.accessToken,
     ).toBe('replacement-token')
     const html = await (
@@ -442,10 +442,10 @@ describe('Hono scaffolding', () => {
       'Switched to Demo User and hid the previous user&#39;s budgets. Their credentials remain in this sample&#39;s server-side memory until they are disconnected, forgotten, or the sample is restarted.',
     )
     expect(
-      await credentials.get(
-        'local-demo-user' as ApplicationUserId,
-        84 as AccountId,
-      ),
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 84 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toBeDefined()
     const hiddenSelection = await app.request(
       '/connections/active',
@@ -472,6 +472,116 @@ describe('Hono scaffolding', () => {
     expect(returnedHtml).toContain(
       'Returned to Demo User and restored that user&#39;s previously authorized budgets from this sample&#39;s server-side memory.',
     )
+  })
+
+  it('keeps the same account ID separate when two Lunch Money users authorize it', async () => {
+    const applicationUserId = 'local-demo-user' as ApplicationUserId
+    const accountId = 84 as AccountId
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert(applicationUserId, {
+      accountId,
+      budgetName: 'First user budget',
+      credentials: { accessToken: 'first-user-token', scope: 'me:read' },
+      lunchMoneyUserId: 42,
+    })
+    const protocol = new FakeProtocolClient()
+    protocol.credentials = {
+      accessToken: 'second-user-token',
+      scope: 'me:read',
+    }
+    const app = createApp(configuration, protocol, {
+      credentials,
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          Response.json({
+            ...profile(84, 'Second user budget'),
+            id: 77,
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(profile(84, 'First user budget'))),
+    })
+    const session = await openSession(app)
+
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=second&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    expect(await credentials.list(applicationUserId)).toHaveLength(2)
+    expect(
+      (
+        await credentials.get(applicationUserId, {
+          accountId,
+          lunchMoneyUserId: 42,
+        })
+      )?.credentials.accessToken,
+    ).toBe('first-user-token')
+    expect(
+      (
+        await credentials.get(applicationUserId, {
+          accountId,
+          lunchMoneyUserId: 77,
+        })
+      )?.credentials.accessToken,
+    ).toBe('second-user-token')
+    let html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('Second user budget')
+    expect(html).not.toContain('First user budget')
+
+    protocol.credentials = {
+      accessToken: 'first-user-reauthorized',
+      scope: 'me:read',
+    }
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=return&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    expect(await credentials.list(applicationUserId)).toHaveLength(2)
+    expect(
+      (
+        await credentials.get(applicationUserId, {
+          accountId,
+          lunchMoneyUserId: 42,
+        })
+      )?.credentials.accessToken,
+    ).toBe('first-user-reauthorized')
+    expect(
+      (
+        await credentials.get(applicationUserId, {
+          accountId,
+          lunchMoneyUserId: 77,
+        })
+      )?.credentials.accessToken,
+    ).toBe('second-user-token')
+    html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('First user budget')
+    expect(html).not.toContain('Second user budget')
+
+    await app.request('/reset', formRequest(session.cookie, session.csrfToken))
+    expect(
+      await credentials.get(applicationUserId, {
+        accountId,
+        lunchMoneyUserId: 42,
+      }),
+    ).toBeUndefined()
+    expect(
+      await credentials.get(applicationUserId, {
+        accountId,
+        lunchMoneyUserId: 77,
+      }),
+    ).toBeDefined()
   })
 
   it('removes only the active budget and falls back to the remaining connection', async () => {
@@ -501,16 +611,16 @@ describe('Hono scaffolding', () => {
     await app.request('/reset', formRequest(session.cookie, session.csrfToken))
 
     expect(
-      await credentials.get(
-        'local-demo-user' as ApplicationUserId,
-        91 as AccountId,
-      ),
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 91 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toBeUndefined()
     expect(
-      await credentials.get(
-        'local-demo-user' as ApplicationUserId,
-        84 as AccountId,
-      ),
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 84 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toBeDefined()
     const html = await (
       await app.request('/', { headers: { cookie: session.cookie } })
@@ -553,10 +663,10 @@ describe('Hono scaffolding', () => {
     ])
     expect(
       (
-        await credentials.get(
-          'local-demo-user' as ApplicationUserId,
-          84 as AccountId,
-        )
+        await credentials.get('local-demo-user' as ApplicationUserId, {
+          accountId: 84 as AccountId,
+          lunchMoneyUserId: 42,
+        })
       )?.credentials.refreshToken,
     ).toBe('refresh-a')
   })
@@ -592,16 +702,16 @@ describe('Hono scaffolding', () => {
       { token: 'access-b', tokenKind: 'access_token' },
     ])
     expect(
-      await credentials.get(
-        'local-demo-user' as ApplicationUserId,
-        84 as AccountId,
-      ),
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 84 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toBeDefined()
     expect(
-      await credentials.get(
-        'local-demo-user' as ApplicationUserId,
-        91 as AccountId,
-      ),
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 91 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
     ).toBeUndefined()
     const html = await (
       await app.request('/', { headers: { cookie: session.cookie } })

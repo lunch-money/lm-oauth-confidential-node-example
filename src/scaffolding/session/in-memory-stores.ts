@@ -152,6 +152,17 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
 export interface BrowserSession {
   activeAccountId?: AccountId
   activeLunchMoneyUserId?: number
+  authorizationProcessing?: {
+    authorizedBudgetCount: number
+    budgetName: string
+    lunchMoneyUserName: string
+    result:
+      | 'connected_new_user'
+      | 'added_budget'
+      | 'reauthorized_budget'
+      | 'returned_user'
+      | 'switched_user'
+  }
   csrfToken: string
   message?: string
   profile?: import('../../oauth/lunch-money-api.js').LunchMoneyProfile

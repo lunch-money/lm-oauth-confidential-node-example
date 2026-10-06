@@ -159,7 +159,48 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('private-code')
     expect(html).not.toContain('server-only-verifier')
     expect(html).not.toContain(configuration.oauth.clientSecret)
+    expect(html).toContain('How this authorization was processed')
+    expect(html).toContain('Inspect the credential response locally')
+    expect(html).toContain('exchangeCallback()')
+    expect(html).toContain('accessToken: string')
+    expect(html).not.toMatch(/github\.com[^"']+#L\d+/)
+    expect(
+      html.match(/target="_blank" rel="noopener noreferrer"/g),
+    ).toHaveLength(4)
   })
+
+  it.each(['/revoke', '/reset'])(
+    'clears the authorization explanation after POST %s',
+    async (route) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+        .mockResolvedValue(new Response(null, { status: 401 }))
+      const app = createApp(configuration, new FakeProtocolClient(), {
+        fetcher,
+      })
+      const session = await openSession(app)
+      await app.request(
+        '/oauth/start',
+        formRequest(session.cookie, session.csrfToken),
+      )
+      await app.request('/oauth/callback?code=code&state=generated-state', {
+        headers: { cookie: session.cookie },
+      })
+      expect(
+        await (
+          await app.request('/', { headers: { cookie: session.cookie } })
+        ).text(),
+      ).toContain('How this authorization was processed')
+
+      await app.request(route, formRequest(session.cookie, session.csrfToken))
+      expect(
+        await (
+          await app.request('/', { headers: { cookie: session.cookie } })
+        ).text(),
+      ).not.toContain('How this authorization was processed')
+    },
+  )
 
   it('shows and CSRF-protects refresh only when the stored connection has a refresh token', async () => {
     const credentials = new InMemoryCredentialStore()
@@ -235,6 +276,10 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('Switch budget')
     expect(html).toContain('Authorize another budget')
     expect(html).toContain('Demo User is connected. 2 authorized budgets.')
+    expect(html).toContain(
+      'Added API testing to Demo User&#39;s budget selector.',
+    )
+    expect(html).toContain('The active user now has 2 authorized budgets.')
     expect(html).toContain('Disconnect active budget')
     expect(html).toContain('Forget local credential only')
     expect(html).toContain(
@@ -252,6 +297,7 @@ describe('Hono scaffolding', () => {
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
     expect(html).toContain('No profile has been loaded')
+    expect(html).not.toContain('How this authorization was processed')
 
     await app.request('/me', formRequest(session.cookie, session.csrfToken))
     html = await (
@@ -337,6 +383,7 @@ describe('Hono scaffolding', () => {
     ).text()
     expect(html).toContain('Shared name · account 84')
     expect(html).toContain('Shared name · account 91')
+    expect(html).toContain('Replaced the stored authorization for Shared name.')
   })
 
   it('shows only the newly authorized user’s budgets after identity changes', async () => {
@@ -347,6 +394,15 @@ describe('Hono scaffolding', () => {
       credentials: { accessToken: 'first-user-token', scope: 'me:read' },
       lunchMoneyUserId: 42,
     })
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 85 as AccountId,
+      budgetName: 'Savings',
+      credentials: {
+        accessToken: 'first-user-savings-token',
+        scope: 'me:read',
+      },
+      lunchMoneyUserId: 42,
+    })
     const protocol = new FakeProtocolClient()
     protocol.credentials = {
       accessToken: 'second-user-token',
@@ -354,13 +410,16 @@ describe('Hono scaffolding', () => {
     }
     const app = createApp(configuration, protocol, {
       credentials,
-      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
-        Response.json({
-          ...profile(91, 'Personal'),
-          id: 77,
-          email: 'another@example.com',
-        }),
-      ),
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          Response.json({
+            ...profile(91, 'Personal'),
+            id: 77,
+            email: 'another@example.com',
+          }),
+        )
+        .mockResolvedValueOnce(Response.json(profile(84, 'Household'))),
     })
     const session = await openSession(app)
     await app.request(
@@ -377,7 +436,11 @@ describe('Hono scaffolding', () => {
     expect(html).toContain('Demo User is connected. 1 authorized budget.')
     expect(html).toContain('Personal')
     expect(html).not.toContain('Household')
+    expect(html).not.toContain('Savings')
     expect(html).not.toContain('another@example.com')
+    expect(html).toContain(
+      'Switched to Demo User and hid the previous user&#39;s budgets. Their credentials remain in this sample&#39;s server-side memory until they are disconnected, forgotten, or the sample is restarted.',
+    )
     expect(
       await credentials.get(
         'local-demo-user' as ApplicationUserId,
@@ -389,6 +452,26 @@ describe('Hono scaffolding', () => {
       formRequest(session.cookie, session.csrfToken, { account_id: '84' }),
     )
     expect(hiddenSelection.status).toBe(404)
+
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=return&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+    const returnedHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(returnedHtml).toContain(
+      'Demo User is connected. 2 authorized budgets.',
+    )
+    expect(returnedHtml).toContain('Household')
+    expect(returnedHtml).toContain('Savings')
+    expect(returnedHtml).not.toContain('Personal')
+    expect(returnedHtml).toContain(
+      'Returned to Demo User and restored that user&#39;s previously authorized budgets from this sample&#39;s server-side memory.',
+    )
   })
 
   it('removes only the active budget and falls back to the remaining connection', async () => {

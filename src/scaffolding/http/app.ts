@@ -149,6 +149,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      delete session.value.authorizationProcessing
       // The Connect form starts OAuth for the user and browser session established by the server above.
       const url = await startAuthorization(protocol, attempts, {
         applicationUserId: DEMO_APPLICATION_USER_ID,
@@ -170,6 +171,11 @@ export function createApp(
       browserSessions,
     )
     try {
+      const previousActiveLunchMoneyUserId =
+        session.value.activeLunchMoneyUserId
+      const connectionsBeforeAuthorization = await credentials.list(
+        DEMO_APPLICATION_USER_ID,
+      )
       // Lunch Money returns here; completeAuthorization checks the saved attempt before storing credentials for its owner.
       const connected = await completeAuthorization(
         protocol,
@@ -199,8 +205,33 @@ export function createApp(
         (connection) =>
           connection.lunchMoneyUserId === connectedRecord.lunchMoneyUserId,
       ).length
+      const existingConnection = connectionsBeforeAuthorization.find(
+        (connection) => connection.accountId === connected.accountId,
+      )
+      const returningToKnownUser = connectionsBeforeAuthorization.some(
+        (connection) =>
+          connection.lunchMoneyUserId === connectedRecord.lunchMoneyUserId,
+      )
+      session.value.authorizationProcessing = {
+        authorizedBudgetCount,
+        budgetName: connectedRecord.budgetName,
+        lunchMoneyUserName:
+          connectedRecord.lunchMoneyUserName ?? 'Lunch Money user',
+        result:
+          previousActiveLunchMoneyUserId === undefined
+            ? 'connected_new_user'
+            : previousActiveLunchMoneyUserId !==
+                connectedRecord.lunchMoneyUserId
+              ? returningToKnownUser
+                ? 'returned_user'
+                : 'switched_user'
+              : existingConnection
+                ? 'reauthorized_budget'
+                : 'added_budget',
+      }
       session.value.message = `${connectedRecord.lunchMoneyUserName ?? 'Lunch Money user'} is connected. ${authorizedBudgetCount} authorized ${authorizedBudgetCount === 1 ? 'budget' : 'budgets'}.`
     } catch (error) {
+      delete session.value.authorizationProcessing
       session.value.message = publicErrorMessage(error)
       console.error(JSON.stringify({ event: 'oauth.callback.failed' }))
     }
@@ -237,6 +268,7 @@ export function createApp(
       return context.text('Budgeting account not found.', 404)
     }
     session.value.activeAccountId = accountId
+    delete session.value.authorizationProcessing
     delete session.value.profile
     delete session.value.refresh
     delete session.value.revocation
@@ -281,6 +313,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      delete session.value.authorizationProcessing
       // The refresh button asks the teaching workflow to replace this connection's credential set safely.
       session.value.refresh = await refreshConnection(
         protocol,
@@ -315,6 +348,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      delete session.value.authorizationProcessing
       // The disconnect button revokes server-held credentials, verifies the old access token, and removes the local set.
       session.value.revocation = await revokeAndVerify(
         protocol,
@@ -354,6 +388,7 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     // Reset clears only this sample's local state; it is not a substitute for revoking access at Lunch Money.
+    delete session.value.authorizationProcessing
     const accountId = requireActiveAccountId(session.value.activeAccountId)
     await deleteCredentials(credentials, DEMO_APPLICATION_USER_ID, accountId)
     refreshCoordinator.clearReauthorizationRequired({

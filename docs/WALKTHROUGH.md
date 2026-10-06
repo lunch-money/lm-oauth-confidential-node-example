@@ -97,9 +97,23 @@ If a form reports **Invalid CSRF token**, reload the page and try again. This co
 1. Choose **Connect Lunch Money**.
 2. Sign into Lunch Money as the user who created the development client.
 3. Select one of that user's budgeting accounts and approve access.
-4. After the browser returns to `http://localhost:4002/oauth/callback`, choose **Call /v2/me**.
+4. After the browser returns to `http://localhost:4002/oauth/callback`, expand **How this authorization was processed** to follow the callback, server-side code exchange, `/v2/me` identity check, and resulting active-user decision. Then choose **Call /v2/me**.
 
 The sample calls `GET /v2/me` from its Node.js server using the server-held access token. It validates the response against the documented `userObject` schema and displays the returned profile fields. The access token is never sent to the browser.
+
+The processing panel links each teaching step to its implementation. It deliberately does not reveal credential values. To see the normalized credential response while developing locally, set a debugger breakpoint immediately after `exchangeCallback()` returns in `completeAuthorization`, then inspect `tokenSet`. Do not print tokens in browser output or logs.
+
+If you want to verify the access token outside the sample, copy it from the local debugger and read it silently into a temporary shell variable. This keeps the credential itself out of shell history:
+
+```sh
+read -s LM_ACCESS_TOKEN
+curl --fail-with-body \
+  --header "Authorization: Bearer ${LM_ACCESS_TOKEN}" \
+  "${LUNCH_MONEY_API_BASE_URL}/v2/me"
+unset LM_ACCESS_TOKEN
+```
+
+Press <kbd>Enter</kbd> after pasting the token at the hidden prompt. Treat it as a live secret: use a private local terminal, do not paste it directly into a command, and clear the variable when finished. This debugger workflow is for understanding and testing the sample. A production application should inspect encrypted credential records only through privileged operational tooling that redacts secret values.
 
 Open Lunch Money's [Connected Apps](https://my.lunchmoney.app/connected-apps) page in another tab, keeping the sample available so you can return to it. The client you just authorized should appear with the details you registered. If you plan to exercise refresh, return to the sample without revoking access yet; revocation ends this authorization's continuing access.
 

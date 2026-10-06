@@ -5,7 +5,7 @@ This is a review aid, not a claim that checking boxes makes an application produ
 - Authenticate your own users before OAuth and derive a stable internal `applicationUserId` from the server session.
 - Bind every authorization attempt to that identity and the initiating server-derived application session before redirect; require both again at callback. Never accept either identity from email, browser forms, callback queries, or OAuth profile data.
 - Give attempts a short application-chosen lifetime, atomically consume them once, delete expired/abandoned records, and test replay, expiry boundaries, session switching, and clock behavior. Do not infer Lunch Money token lifetimes from this sample's five-minute attempt policy.
-- Decide whether users may own multiple Lunch Money connections and use a stable `connectionId` consistently.
+- Key every saved connection by the authenticated application's user ID plus the validated Lunch Money `/v2/me` `id` and `account_id`. Neither provider value is sufficient alone because different Lunch Money users can share a budgeting account.
 - Replace all in-memory adapters with durable, horizontally shared storage.
 - Encrypt OAuth credentials at rest; define key management, rotation, backup, restore, access auditing, and least-privilege service access.
 - Enforce tenant isolation for reads, authorization replacement, refresh replacement, revocation, deletion, and administrative tools.

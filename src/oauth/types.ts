@@ -17,15 +17,17 @@ export type ApplicationSessionId = string & {
   readonly __brand: 'ApplicationSessionId'
 }
 
-/**
- * Supply an application-assigned ID when one user can have distinct Lunch
- * Money connections. Use the same value for later reads, refreshes, revocation,
- * and deletion of that connection.
- */
+/** Stable budgeting-account ID returned by validated `GET /v2/me`. */
 export type AccountId = number & { readonly __brand: 'AccountId' }
 
-/** @deprecated Existing lifecycle callers migrate to AccountId in the UI/storage phase. */
-export type ConnectionId = string & { readonly __brand: 'ConnectionId' }
+/**
+ * Provider identity for one authorization. Two Lunch Money users can authorize
+ * the same shared budgeting account, so neither field is sufficient alone.
+ */
+export interface ConnectionIdentity {
+  readonly accountId: AccountId
+  readonly lunchMoneyUserId: number
+}
 
 /**
  * Your server must save this short-lived record before redirecting to Lunch
@@ -39,8 +41,6 @@ export type ConnectionId = string & { readonly __brand: 'ConnectionId' }
 export interface AuthorizationAttempt {
   readonly applicationSessionId: ApplicationSessionId
   readonly applicationUserId: ApplicationUserId
-  /** @deprecated Ignored when identifying the authorized budgeting account. */
-  readonly connectionId?: ConnectionId
   readonly codeVerifier: string
   readonly expiresAt: number
   readonly state: string
@@ -66,11 +66,9 @@ export interface CredentialSet {
  * learned from a validated `GET /v2/me` response after authorization; the
  * display name is metadata and must never be used as the storage key.
  */
-export interface LunchMoneyConnection {
-  readonly accountId: AccountId
+export interface LunchMoneyConnection extends ConnectionIdentity {
   readonly budgetName: string
   readonly credentials: CredentialSet
-  readonly lunchMoneyUserId: number
   readonly lunchMoneyUserName?: string
 }
 

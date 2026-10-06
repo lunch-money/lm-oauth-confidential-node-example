@@ -46,17 +46,17 @@ Use Node.js 20 or newer and npm 11.6.2. Then continue with [Register a confident
 
 ### Load settings from a `.env` file
 
-The walkthrough configures the process with `export` commands. As an equivalent local option, copy [`.env.example`](.env.example) to `.env` in the repository root, replace the placeholders with the client ID, client secret, redirect URI, and API base URL from your Lunch Money registration, then run `npm run dev`.
+The walkthrough configures the process with `export` commands. As an equivalent local option, copy [`env.example`](env.example) to `.env` in the repository root and replace the client ID, client secret, and redirect URI placeholders. The API base URL defaults to production; uncomment its override only when Lunch Money supplies a beta or alpha URL for a client registered in that environment. Then run `npm run dev`.
 
 On startup, the sample uses [dotenv](https://github.com/motdotla/dotenv) to load that `.env` file when it exists. Variables already set in the shell are left unchanged, so the walkthrough's exports still take effect if both are present.
 
-Do not commit `.env`. Git already ignores it. Keep the client secret out of screenshots, logs, support requests, and shared shell history. [`.env.example`](.env.example) contains placeholders only.
+Do not commit `.env`. Git already ignores it. Keep the client secret out of screenshots, logs, support requests, and shared shell history. [`env.example`](env.example) contains placeholders only.
 
 `PORT` defaults to `4002`. `SESSION_SECRET` is optional for this local sample; see [Configure the local process](docs/WALKTHROUGH.md#3-configure-the-local-process) for the production distinction.
 
 ## How credentials stay with the right application user
 
-Before redirecting to Lunch Money, an application must remember which signed-in application user started the connection and which browser session made the request. When Lunch Money redirects back, the callback must match both saved values. The application then stores the credentials for that user and connection; callback parameters and form fields never decide who owns them.
+Before redirecting to Lunch Money, an application must remember which signed-in application user started authorization and which browser session made the request. When Lunch Money redirects back, the callback must match both saved values. After exchange, validated `/v2/me` values identify the Lunch Money user and budget. The application stores credentials under `(applicationUserId, lunchMoneyUserId, accountId)`; callback parameters and form fields never decide who owns them.
 
 The sample represents its one application user as `local-demo-user`. A real application replaces it with an application-specific ID obtained from its authenticated server-side session. That ID should not be an email address or other personally identifiable information.
 

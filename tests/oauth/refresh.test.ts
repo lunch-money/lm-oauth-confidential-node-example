@@ -17,10 +17,12 @@ import { FakeProtocolClient } from '../fixtures/fakes.js'
 const owner = {
   applicationUserId: 'user-a' as ApplicationUserId,
   accountId: 11 as AccountId,
+  lunchMoneyUserId: 42,
 }
 const otherOwner = {
   applicationUserId: 'user-b' as ApplicationUserId,
   accountId: 11 as AccountId,
+  lunchMoneyUserId: 42,
 }
 const offlineCredentials: CredentialSet = {
   accessToken: 'old-access',
@@ -59,7 +61,7 @@ describe('refresh orchestration', () => {
     ).resolves.toEqual({ status: 'refreshed' })
     expect(protocol.refreshed).toEqual([offlineCredentials])
     await expect(
-      store.get(owner.applicationUserId, owner.accountId),
+      store.get(owner.applicationUserId, owner),
     ).resolves.toMatchObject({
       credentials: {
         accessToken: 'rotated-access-token',
@@ -107,7 +109,7 @@ describe('refresh orchestration', () => {
       })
       expect(protocol.refresh).toHaveBeenCalledOnce()
       await expect(
-        store.get(owner.applicationUserId, owner.accountId),
+        store.get(owner.applicationUserId, owner),
       ).resolves.toBeUndefined()
       await refreshConnection(protocol, store, coordinator, owner)
       expect(protocol.refresh).toHaveBeenCalledOnce()
@@ -131,7 +133,7 @@ describe('refresh orchestration', () => {
       ),
     ).rejects.toBeInstanceOf(OAuthError)
     await expect(
-      store.get(owner.applicationUserId, owner.accountId),
+      store.get(owner.applicationUserId, owner),
     ).resolves.toMatchObject({ credentials: offlineCredentials })
   })
 
@@ -158,7 +160,7 @@ describe('refresh orchestration', () => {
       reason: 'replacement_not_saved',
     })
     await expect(
-      store.get(owner.applicationUserId, owner.accountId),
+      store.get(owner.applicationUserId, owner),
     ).resolves.toBeUndefined()
     await refreshConnection(protocol, store, coordinator, owner)
     expect(protocol.refreshed).toHaveLength(1)
@@ -213,7 +215,7 @@ describe('refresh orchestration', () => {
     ).resolves.toEqual({ status: 'refresh_not_available' })
     expect(protocol.refreshed).toHaveLength(0)
     await expect(
-      store.get(owner.applicationUserId, owner.accountId),
+      store.get(owner.applicationUserId, owner),
     ).resolves.toMatchObject({ credentials: offlineCredentials })
   })
 
@@ -237,14 +239,6 @@ describe('refresh orchestration', () => {
       list: vi.fn(async () => [...values.values()]),
       upsert: vi.fn(async (_user, value) => {
         values.set('owner', value)
-      }),
-      replace: vi.fn(async (_user, _connection, value) => {
-        values.set('owner', {
-          accountId: 1 as import('../../src/oauth/index.js').AccountId,
-          budgetName: 'Primary',
-          credentials: value,
-          lunchMoneyUserId: 2,
-        })
       }),
       delete: vi.fn(async () => values.delete('owner')),
     }

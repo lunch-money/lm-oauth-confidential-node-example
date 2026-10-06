@@ -125,7 +125,7 @@ SECURITY.md
 PRODUCTION_CHECKLIST.md
 TROUBLESHOOTING.md
 CONTRIBUTING.md
-.env.example
+env.example
 package.json
 src/
   oauth/

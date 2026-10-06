@@ -10,6 +10,7 @@ import {
   startAuthorization,
   type ApplicationUserId,
   type AccountId,
+  type ConnectionIdentity,
   type LunchMoneyConnection,
   type OAuthProtocolClient,
 } from '../../oauth/index.js'
@@ -37,11 +38,17 @@ function sortedConnections(
   )
 }
 
-function requireActiveAccountId(activeAccountId?: AccountId): AccountId {
-  if (activeAccountId === undefined) {
+function requireActiveConnectionIdentity(
+  activeAccountId?: AccountId,
+  activeLunchMoneyUserId?: number,
+): ConnectionIdentity {
+  if (activeAccountId === undefined || activeLunchMoneyUserId === undefined) {
     throw new Error('No active Lunch Money budget is selected.')
   }
-  return activeAccountId
+  return {
+    accountId: activeAccountId,
+    lunchMoneyUserId: activeLunchMoneyUserId,
+  }
 }
 
 export interface AppDependencies {
@@ -91,7 +98,9 @@ export function createApp(
       await credentials.list(DEMO_APPLICATION_USER_ID),
     )
     const activeConnection = allConnections.find(
-      (connection) => connection.accountId === session.value.activeAccountId,
+      (connection) =>
+        connection.accountId === session.value.activeAccountId &&
+        connection.lunchMoneyUserId === session.value.activeLunchMoneyUserId,
     )
     if (session.value.activeLunchMoneyUserId === undefined) {
       const fallback = activeConnection ?? allConnections[0]
@@ -189,7 +198,7 @@ export function createApp(
       )
       const connectedRecord = await credentials.get(
         DEMO_APPLICATION_USER_ID,
-        connected.accountId,
+        connected,
       )
       if (!connectedRecord) throw new Error('Connected budget was not stored.')
       session.value.activeAccountId = connected.accountId
@@ -198,6 +207,7 @@ export function createApp(
       refreshCoordinator.clearReauthorizationRequired({
         applicationUserId: DEMO_APPLICATION_USER_ID,
         accountId: connected.accountId,
+        lunchMoneyUserId: connected.lunchMoneyUserId,
       })
       const authorizedBudgetCount = (
         await credentials.list(DEMO_APPLICATION_USER_ID)
@@ -206,7 +216,9 @@ export function createApp(
           connection.lunchMoneyUserId === connectedRecord.lunchMoneyUserId,
       ).length
       const existingConnection = connectionsBeforeAuthorization.find(
-        (connection) => connection.accountId === connected.accountId,
+        (connection) =>
+          connection.accountId === connected.accountId &&
+          connection.lunchMoneyUserId === connected.lunchMoneyUserId,
       )
       const returningToKnownUser = connectionsBeforeAuthorization.some(
         (connection) =>
@@ -257,14 +269,15 @@ export function createApp(
       return context.text('Invalid budgeting account.', 400)
     }
     const accountId = parsed as AccountId
-    const connection = await credentials.get(
-      DEMO_APPLICATION_USER_ID,
+    const activeLunchMoneyUserId = session.value.activeLunchMoneyUserId
+    if (activeLunchMoneyUserId === undefined) {
+      return context.text('Budgeting account not found.', 404)
+    }
+    const connection = await credentials.get(DEMO_APPLICATION_USER_ID, {
       accountId,
-    )
-    if (
-      !connection ||
-      connection.lunchMoneyUserId !== session.value.activeLunchMoneyUserId
-    ) {
+      lunchMoneyUserId: activeLunchMoneyUserId,
+    })
+    if (!connection) {
       return context.text('Budgeting account not found.', 404)
     }
     session.value.activeAccountId = accountId
@@ -291,7 +304,10 @@ export function createApp(
         credentials,
         {
           applicationUserId: DEMO_APPLICATION_USER_ID,
-          accountId: requireActiveAccountId(session.value.activeAccountId),
+          ...requireActiveConnectionIdentity(
+            session.value.activeAccountId,
+            session.value.activeLunchMoneyUserId,
+          ),
         },
         configuration.oauth.meEndpoint,
         fetcher,
@@ -321,7 +337,10 @@ export function createApp(
         refreshCoordinator,
         {
           applicationUserId: DEMO_APPLICATION_USER_ID,
-          accountId: requireActiveAccountId(session.value.activeAccountId),
+          ...requireActiveConnectionIdentity(
+            session.value.activeAccountId,
+            session.value.activeLunchMoneyUserId,
+          ),
         },
       )
       session.value.message =
@@ -355,7 +374,10 @@ export function createApp(
         credentials,
         {
           applicationUserId: DEMO_APPLICATION_USER_ID,
-          accountId: requireActiveAccountId(session.value.activeAccountId),
+          ...requireActiveConnectionIdentity(
+            session.value.activeAccountId,
+            session.value.activeLunchMoneyUserId,
+          ),
         },
         configuration.oauth.meEndpoint,
         fetcher,
@@ -389,11 +411,14 @@ export function createApp(
     }
     // Reset clears only this sample's local state; it is not a substitute for revoking access at Lunch Money.
     delete session.value.authorizationProcessing
-    const accountId = requireActiveAccountId(session.value.activeAccountId)
-    await deleteCredentials(credentials, DEMO_APPLICATION_USER_ID, accountId)
+    const identity = requireActiveConnectionIdentity(
+      session.value.activeAccountId,
+      session.value.activeLunchMoneyUserId,
+    )
+    await deleteCredentials(credentials, DEMO_APPLICATION_USER_ID, identity)
     refreshCoordinator.clearReauthorizationRequired({
       applicationUserId: DEMO_APPLICATION_USER_ID,
-      accountId,
+      ...identity,
     })
     const remaining = sortedConnections(
       await credentials.list(DEMO_APPLICATION_USER_ID),

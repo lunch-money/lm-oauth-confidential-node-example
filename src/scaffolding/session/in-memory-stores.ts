@@ -1,10 +1,9 @@
 import type {
+  AccountId,
   ApplicationUserId,
   AuthorizationAttempt,
   AuthorizationAttemptStore,
-  AccountId,
-  ConnectionId,
-  CredentialSet,
+  ConnectionIdentity,
   CredentialStore,
   RefreshCoordinator,
   RefreshOwner,
@@ -54,16 +53,20 @@ export class InMemoryCredentialStore implements CredentialStore {
 
   private key(
     applicationUserId: ApplicationUserId,
-    accountId: AccountId | ConnectionId,
+    identity: ConnectionIdentity,
   ): string {
-    return JSON.stringify([applicationUserId, accountId])
+    return JSON.stringify([
+      applicationUserId,
+      identity.lunchMoneyUserId,
+      identity.accountId,
+    ])
   }
 
   async get(
     applicationUserId: ApplicationUserId,
-    accountId: AccountId | ConnectionId,
+    identity: ConnectionIdentity,
   ): Promise<LunchMoneyConnection | undefined> {
-    return this.values.get(this.key(applicationUserId, accountId))
+    return this.values.get(this.key(applicationUserId, identity))
   }
 
   async list(
@@ -78,31 +81,14 @@ export class InMemoryCredentialStore implements CredentialStore {
     applicationUserId: ApplicationUserId,
     connection: LunchMoneyConnection,
   ): Promise<void> {
-    this.values.set(
-      this.key(applicationUserId, connection.accountId),
-      connection,
-    )
-  }
-
-  async replace(
-    applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
-    credentials: CredentialSet,
-  ): Promise<void> {
-    this.values.set(this.key(applicationUserId, connectionId), {
-      accountId: Number.NaN as AccountId,
-      budgetName: 'Unidentified legacy connection',
-      credentials,
-      lunchMoneyUserId: Number.NaN,
-      lunchMoneyUserName: 'Unidentified legacy user',
-    })
+    this.values.set(this.key(applicationUserId, connection), connection)
   }
 
   async delete(
     applicationUserId: ApplicationUserId,
-    accountId: AccountId | ConnectionId,
+    identity: ConnectionIdentity,
   ): Promise<boolean> {
-    return this.values.delete(this.key(applicationUserId, accountId))
+    return this.values.delete(this.key(applicationUserId, identity))
   }
 }
 
@@ -118,7 +104,8 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
   private key(owner: RefreshOwner): string {
     return JSON.stringify([
       owner.applicationUserId,
-      'accountId' in owner ? owner.accountId : owner.connectionId,
+      owner.lunchMoneyUserId,
+      owner.accountId,
     ])
   }
 

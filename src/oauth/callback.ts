@@ -1,10 +1,11 @@
 import { OAuthError } from './errors.js'
 import type { AuthorizationAttemptStore } from './authorization.js'
 import type { CredentialStore } from './tokens.js'
+import { identifyLunchMoneyConnection } from './lunch-money-api.js'
 import type {
+  AccountId,
   ApplicationSessionId,
   ApplicationUserId,
-  ConnectionId,
   OAuthProtocolClient,
 } from './types.js'
 
@@ -21,9 +22,11 @@ export async function completeAuthorization(
   callbackUrl: URL,
   authenticatedApplicationUserId: ApplicationUserId,
   applicationSessionId: ApplicationSessionId,
+  meEndpoint: URL = new URL('/v2/me', callbackUrl),
+  fetcher: typeof fetch = fetch,
 ): Promise<{
   applicationUserId: ApplicationUserId
-  connectionId: ConnectionId
+  accountId: AccountId
 }> {
   const error = callbackUrl.searchParams.get('error')
   const state = callbackUrl.searchParams.get('state')
@@ -81,14 +84,22 @@ export async function completeAuthorization(
     )
   }
 
-  // Security invariant: verified credentials inherit the owner bound to the original server-side attempt.
-  await credentials.replace(
-    attempt.applicationUserId,
-    attempt.connectionId,
+  // Security invariant: only the validated resource response decides which budgeting account owns the credentials.
+  const profile = await identifyLunchMoneyConnection(
     tokenSet,
+    meEndpoint,
+    fetcher,
   )
+  const accountId = profile.account_id as AccountId
+  await credentials.upsert(attempt.applicationUserId, {
+    accountId,
+    budgetName: profile.budget_name,
+    credentials: tokenSet,
+    lunchMoneyUserId: profile.id,
+    lunchMoneyUserName: profile.name,
+  })
   return {
     applicationUserId: attempt.applicationUserId,
-    connectionId: attempt.connectionId,
+    accountId,
   }
 }

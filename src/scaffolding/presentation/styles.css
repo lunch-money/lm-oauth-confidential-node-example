@@ -49,6 +49,14 @@ pre {
   border-left: 0.25rem solid #246b45;
   background: #e9f6ee;
 }
+.success select {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 .small {
   font-size: 0.9rem;
   color: #59645d;

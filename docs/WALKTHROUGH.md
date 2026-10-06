@@ -113,9 +113,9 @@ If you registered only `me:read`, Lunch Money does not issue a refresh token and
 
 The sample allows an immediate refresh so you can observe the flow. A production application normally decides when to refresh using expiration information from the token response or after an API authentication failure.
 
-## 7. Revoke and verify access
+## 7. Disconnect the active budget
 
-Choose **Revoke and verify**.
+Choose **Disconnect active budget**.
 
 - If the connection has a refresh token, the sample revokes it to revoke the entire grant.
 - If the connection has only an access token, the sample revokes that access token.
@@ -133,13 +133,13 @@ To see what happens when a Lunch Money user disconnects the client:
 3. Revoke the client's access there.
 4. Return to the sample and choose **Call /v2/me**.
 
-The request should fail because Lunch Money no longer accepts the stored access token. Choose **Local reset only** to remove the now-unusable local credential and browser session before starting again.
+The request should fail because Lunch Money no longer accepts the stored access token. Choose **Forget local credential only** to remove the now-unusable local credential before starting again.
 
 ## Local reset is not revocation
 
-**Local reset only** clears the sample's browser session and locally stored credential. It does not contact Lunch Money and does not revoke active access.
+**Forget local credential only** clears the active budget's locally stored credential after confirmation. It does not contact Lunch Money and does not revoke active access.
 
-When access is still active, revoke it first through **Revoke and verify** or Lunch Money's Connected Apps page. Use local reset by itself only when the remote authorization has already been revoked or you deliberately want to clear this disposable local demonstration.
+When access is still active, revoke it first through **Disconnect active budget** or Lunch Money's Connected Apps page. Forget the local credential by itself only when the remote authorization has already been revoked or you deliberately want to clear this disposable local demonstration.
 
 ## Why `localhost` works
 

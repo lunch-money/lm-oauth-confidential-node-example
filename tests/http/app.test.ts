@@ -3,7 +3,7 @@ import type { ApplicationConfiguration } from '../../src/scaffolding/configurati
 import { createApp } from '../../src/scaffolding/http/app.js'
 import { FakeProtocolClient } from '../fixtures/fakes.js'
 import { InMemoryCredentialStore } from '../../src/scaffolding/session/in-memory-stores.js'
-import type { ApplicationUserId, ConnectionId } from '../../src/oauth/index.js'
+import type { AccountId, ApplicationUserId } from '../../src/oauth/index.js'
 
 const configuration: ApplicationConfiguration = {
   nodeEnv: 'test',
@@ -31,20 +31,37 @@ async function openSession(app: ReturnType<typeof createApp>): Promise<{
   return { cookie, csrfToken }
 }
 
-function formRequest(cookie: string, csrfToken?: string): RequestInit {
+function formRequest(
+  cookie: string,
+  csrfToken?: string,
+  fields: Record<string, string> = {},
+): RequestInit {
   return {
     method: 'POST',
     headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
     body:
       csrfToken === undefined
         ? ''
-        : new URLSearchParams({ csrf_token: csrfToken }),
+        : new URLSearchParams({ csrf_token: csrfToken, ...fields }),
+  }
+}
+
+function profile(accountId: number, budgetName: string) {
+  return {
+    name: 'Demo User',
+    email: 'demo@example.com',
+    id: 42,
+    account_id: accountId,
+    budget_name: budgetName,
+    primary_currency: 'usd',
+    api_key_label: null,
   }
 }
 
 describe('Hono scaffolding', () => {
   it('sets a signed HTTP-only SameSite cookie and redirects a CSRF-protected authorization start', async () => {
-    const app = createApp(configuration, new FakeProtocolClient())
+    const protocol = new FakeProtocolClient()
+    const app = createApp(configuration, protocol)
     const session = await openSession(app)
     const response = await app.request(
       '/oauth/start',
@@ -58,24 +75,24 @@ describe('Hono scaffolding', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
   })
 
-  it.each(['/oauth/start', '/me', '/refresh', '/revoke', '/reset'])(
-    'rejects missing and incorrect CSRF tokens on POST %s',
-    async (route) => {
-      const app = createApp(configuration, new FakeProtocolClient())
-      const session = await openSession(app)
-      expect(
-        (await app.request(route, formRequest(session.cookie))).status,
-      ).toBe(403)
-      expect(
-        (
-          await app.request(
-            route,
-            formRequest(session.cookie, 'incorrect-token'),
-          )
-        ).status,
-      ).toBe(403)
-    },
-  )
+  it.each([
+    '/oauth/start',
+    '/connections/active',
+    '/me',
+    '/refresh',
+    '/revoke',
+    '/reset',
+  ])('rejects missing and incorrect CSRF tokens on POST %s', async (route) => {
+    const app = createApp(configuration, new FakeProtocolClient())
+    const session = await openSession(app)
+    expect((await app.request(route, formRequest(session.cookie))).status).toBe(
+      403,
+    )
+    expect(
+      (await app.request(route, formRequest(session.cookie, 'incorrect-token')))
+        .status,
+    ).toBe(403)
+  })
 
   it('does not require a form CSRF token on the OAuth callback GET', async () => {
     const protocol = new FakeProtocolClient()
@@ -112,7 +129,7 @@ describe('Hono scaffolding', () => {
 
   it('never returns credentials in browser HTML after callback and /v2/me', async () => {
     const protocol = new FakeProtocolClient()
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       Response.json({
         name: 'Demo User',
         email: 'demo@example.com',
@@ -154,15 +171,16 @@ describe('Hono scaffolding', () => {
     ).text()
     expect(html).not.toContain('action="/refresh"')
 
-    await credentials.replace(
-      'local-demo-user' as ApplicationUserId,
-      'default' as ConnectionId,
-      {
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 84 as AccountId,
+      budgetName: 'Demo budget',
+      lunchMoneyUserId: 42,
+      credentials: {
         accessToken: 'private-access',
         refreshToken: 'private-refresh',
         scope: 'me:read offline_access',
       },
-    )
+    })
     html = await (
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
@@ -175,5 +193,336 @@ describe('Hono scaffolding', () => {
     )
     expect(response.status).toBe(302)
     expect(protocol.refreshed).toHaveLength(1)
+  })
+
+  it('keeps two authorized budgets, activates the newest, and switches locally without OAuth', async () => {
+    const protocol = new FakeProtocolClient()
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Household')))
+      .mockResolvedValueOnce(Response.json(profile(91, 'API testing')))
+      .mockResolvedValueOnce(Response.json(profile(84, 'Household')))
+    const app = createApp(configuration, protocol, { fetcher })
+    const session = await openSession(app)
+
+    protocol.credentials = { accessToken: 'budget-a-token', scope: 'me:read' }
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=a&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    protocol.credentials = { accessToken: 'budget-b-token', scope: 'me:read' }
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=b&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    let html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('Household')
+    expect(html).toContain('API testing')
+    expect(html).toContain('<h2>Active budget</h2>')
+    expect(html).toContain('<form class="success"')
+    expect(html).toContain('value="91" selected')
+    expect(html).toContain('onchange="this.form.submit()"')
+    expect(html).not.toContain('Switch budget')
+    expect(html).toContain('Authorize another budget')
+    expect(html).toContain('Demo User is connected. 2 authorized budgets.')
+    expect(html).toContain('Disconnect active budget')
+    expect(html).toContain('Forget local credential only')
+    expect(html).toContain(
+      "confirm('Forget this local credential without revoking access at Lunch Money?')",
+    )
+
+    const exchangedBeforeSwitch = protocol.exchanged
+    const switched = await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '84' }),
+    )
+    expect(switched.status).toBe(302)
+    expect(protocol.exchanged).toBe(exchangedBeforeSwitch)
+    html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('No profile has been loaded')
+
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('value="84" selected')
+    expect(fetcher).toHaveBeenLastCalledWith(
+      configuration.oauth.meEndpoint,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer budget-a-token',
+        }),
+      }),
+    )
+  })
+
+  it('rejects selection of a budget not owned by the application user', async () => {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert('another-user' as ApplicationUserId, {
+      accountId: 500 as AccountId,
+      budgetName: 'Not mine',
+      credentials: { accessToken: 'other-token', scope: 'me:read' },
+      lunchMoneyUserId: 99,
+    })
+    const app = createApp(configuration, new FakeProtocolClient(), {
+      credentials,
+    })
+    const session = await openSession(app)
+    const response = await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '500' }),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('reauthorizes an existing account in place and keeps duplicate names distinct', async () => {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 84 as AccountId,
+      budgetName: 'Shared name',
+      credentials: { accessToken: 'old-token', scope: 'me:read' },
+      lunchMoneyUserId: 42,
+    })
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 91 as AccountId,
+      budgetName: 'Shared name',
+      credentials: { accessToken: 'other-token', scope: 'me:read' },
+      lunchMoneyUserId: 42,
+    })
+    const protocol = new FakeProtocolClient()
+    protocol.credentials = {
+      accessToken: 'replacement-token',
+      scope: 'me:read',
+    }
+    const app = createApp(configuration, protocol, {
+      credentials,
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json(profile(84, 'Shared name'))),
+    })
+    const session = await openSession(app)
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=new&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    expect(
+      await credentials.list('local-demo-user' as ApplicationUserId),
+    ).toHaveLength(2)
+    expect(
+      (
+        await credentials.get(
+          'local-demo-user' as ApplicationUserId,
+          84 as AccountId,
+        )
+      )?.credentials.accessToken,
+    ).toBe('replacement-token')
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('Shared name · account 84')
+    expect(html).toContain('Shared name · account 91')
+  })
+
+  it('shows only the newly authorized user’s budgets after identity changes', async () => {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 84 as AccountId,
+      budgetName: 'Household',
+      credentials: { accessToken: 'first-user-token', scope: 'me:read' },
+      lunchMoneyUserId: 42,
+    })
+    const protocol = new FakeProtocolClient()
+    protocol.credentials = {
+      accessToken: 'second-user-token',
+      scope: 'me:read',
+    }
+    const app = createApp(configuration, protocol, {
+      credentials,
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          ...profile(91, 'Personal'),
+          id: 77,
+          email: 'another@example.com',
+        }),
+      ),
+    })
+    const session = await openSession(app)
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=second&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('Demo User is connected. 1 authorized budget.')
+    expect(html).toContain('Personal')
+    expect(html).not.toContain('Household')
+    expect(html).not.toContain('another@example.com')
+    expect(
+      await credentials.get(
+        'local-demo-user' as ApplicationUserId,
+        84 as AccountId,
+      ),
+    ).toBeDefined()
+    const hiddenSelection = await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '84' }),
+    )
+    expect(hiddenSelection.status).toBe(404)
+  })
+
+  it('removes only the active budget and falls back to the remaining connection', async () => {
+    const credentials = new InMemoryCredentialStore()
+    for (const [accountId, budgetName] of [
+      [84, 'Household'],
+      [91, 'API testing'],
+    ] as const) {
+      await credentials.upsert('local-demo-user' as ApplicationUserId, {
+        accountId: accountId as AccountId,
+        budgetName,
+        credentials: {
+          accessToken: `${accountId}-token`,
+          scope: 'me:read',
+        },
+        lunchMoneyUserId: 42,
+      })
+    }
+    const app = createApp(configuration, new FakeProtocolClient(), {
+      credentials,
+    })
+    const session = await openSession(app)
+    await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '91' }),
+    )
+    await app.request('/reset', formRequest(session.cookie, session.csrfToken))
+
+    expect(
+      await credentials.get(
+        'local-demo-user' as ApplicationUserId,
+        91 as AccountId,
+      ),
+    ).toBeUndefined()
+    expect(
+      await credentials.get(
+        'local-demo-user' as ApplicationUserId,
+        84 as AccountId,
+      ),
+    ).toBeDefined()
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('Household')
+    expect(html).not.toContain('API testing')
+  })
+
+  it('refreshes only the active budget connection', async () => {
+    const credentials = new InMemoryCredentialStore()
+    for (const [accountId, refreshToken] of [
+      [84, 'refresh-a'],
+      [91, 'refresh-b'],
+    ] as const) {
+      await credentials.upsert('local-demo-user' as ApplicationUserId, {
+        accountId: accountId as AccountId,
+        budgetName: `Budget ${accountId}`,
+        credentials: {
+          accessToken: `access-${accountId}`,
+          refreshToken,
+          scope: 'me:read offline_access',
+        },
+        lunchMoneyUserId: 42,
+      })
+    }
+    const protocol = new FakeProtocolClient()
+    const app = createApp(configuration, protocol, { credentials })
+    const session = await openSession(app)
+    await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '91' }),
+    )
+    await app.request(
+      '/refresh',
+      formRequest(session.cookie, session.csrfToken),
+    )
+
+    expect(protocol.refreshed).toEqual([
+      expect.objectContaining({ refreshToken: 'refresh-b' }),
+    ])
+    expect(
+      (
+        await credentials.get(
+          'local-demo-user' as ApplicationUserId,
+          84 as AccountId,
+        )
+      )?.credentials.refreshToken,
+    ).toBe('refresh-a')
+  })
+
+  it('revokes only the active budget and falls back to another authorized budget', async () => {
+    const credentials = new InMemoryCredentialStore()
+    for (const [accountId, accessToken] of [
+      [84, 'access-a'],
+      [91, 'access-b'],
+    ] as const) {
+      await credentials.upsert('local-demo-user' as ApplicationUserId, {
+        accountId: accountId as AccountId,
+        budgetName: `Budget ${accountId}`,
+        credentials: { accessToken, scope: 'me:read' },
+        lunchMoneyUserId: 42,
+      })
+    }
+    const protocol = new FakeProtocolClient()
+    const app = createApp(configuration, protocol, {
+      credentials,
+      fetcher: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 401 })),
+    })
+    const session = await openSession(app)
+    await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '91' }),
+    )
+    await app.request('/revoke', formRequest(session.cookie, session.csrfToken))
+
+    expect(protocol.revoked).toEqual([
+      { token: 'access-b', tokenKind: 'access_token' },
+    ])
+    expect(
+      await credentials.get(
+        'local-demo-user' as ApplicationUserId,
+        84 as AccountId,
+      ),
+    ).toBeDefined()
+    expect(
+      await credentials.get(
+        'local-demo-user' as ApplicationUserId,
+        91 as AccountId,
+      ),
+    ).toBeUndefined()
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain('Budget 84')
   })
 })

@@ -34,7 +34,9 @@ describe('credential ownership boundary', () => {
       accessToken: 'bob-token',
       scope: 'me:read',
     })
-    expect(await store.get(alice, connection)).toEqual(aliceCredentials)
+    expect((await store.get(alice, connection))?.credentials).toEqual(
+      aliceCredentials,
+    )
   })
 
   it('prevents another user’s refresh persistence from replacing the owner’s credential', async () => {
@@ -45,7 +47,9 @@ describe('credential ownership boundary', () => {
       refreshToken: 'bob-refresh',
       scope: 'me:read offline_access',
     })
-    expect(await store.get(alice, connection)).toEqual(aliceCredentials)
+    expect((await store.get(alice, connection))?.credentials).toEqual(
+      aliceCredentials,
+    )
   })
 
   it('prevents one application user from revoking another user’s credentials', async () => {
@@ -61,13 +65,17 @@ describe('credential ownership boundary', () => {
       ),
     ).rejects.toMatchObject({ code: 'credential_not_found' })
     expect(protocol.revoked).toEqual([])
-    expect(await store.get(alice, connection)).toEqual(aliceCredentials)
+    expect((await store.get(alice, connection))?.credentials).toEqual(
+      aliceCredentials,
+    )
   })
 
   it('prevents one application user from deleting another user’s credentials', async () => {
     const store = new InMemoryCredentialStore()
     await store.replace(alice, connection, aliceCredentials)
     expect(await deleteCredentials(store, bob, connection)).toBe(false)
-    expect(await store.get(alice, connection)).toEqual(aliceCredentials)
+    expect((await store.get(alice, connection))?.credentials).toEqual(
+      aliceCredentials,
+    )
   })
 })

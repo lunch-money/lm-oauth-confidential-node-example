@@ -3,8 +3,8 @@ import {
   OAuthError,
   RefreshProtocolError,
   refreshConnection,
+  type AccountId,
   type ApplicationUserId,
-  type ConnectionId,
   type CredentialSet,
   type CredentialStore,
 } from '../../src/oauth/index.js'
@@ -16,11 +16,11 @@ import { FakeProtocolClient } from '../fixtures/fakes.js'
 
 const owner = {
   applicationUserId: 'user-a' as ApplicationUserId,
-  connectionId: 'primary' as ConnectionId,
+  accountId: 11 as AccountId,
 }
 const otherOwner = {
   applicationUserId: 'user-b' as ApplicationUserId,
-  connectionId: 'primary' as ConnectionId,
+  accountId: 11 as AccountId,
 }
 const offlineCredentials: CredentialSet = {
   accessToken: 'old-access',
@@ -29,15 +29,25 @@ const offlineCredentials: CredentialSet = {
   scope: 'me:read offline_access',
 }
 
+async function seedConnection(
+  store: InMemoryCredentialStore,
+  applicationUserId: ApplicationUserId,
+  credentials: CredentialSet,
+  accountId: AccountId = 11 as AccountId,
+): Promise<void> {
+  await store.upsert(applicationUserId, {
+    accountId,
+    budgetName: `Budget ${accountId}`,
+    credentials,
+    lunchMoneyUserId: 42,
+  })
+}
+
 describe('refresh orchestration', () => {
   it('atomically replaces the complete rotated credential set', async () => {
     const store = new InMemoryCredentialStore()
     const protocol = new FakeProtocolClient()
-    await store.replace(
-      owner.applicationUserId,
-      owner.connectionId,
-      offlineCredentials,
-    )
+    await seedConnection(store, owner.applicationUserId, offlineCredentials)
 
     await expect(
       refreshConnection(
@@ -49,19 +59,21 @@ describe('refresh orchestration', () => {
     ).resolves.toEqual({ status: 'refreshed' })
     expect(protocol.refreshed).toEqual([offlineCredentials])
     await expect(
-      store.get(owner.applicationUserId, owner.connectionId),
-    ).resolves.toEqual({
-      accessToken: 'rotated-access-token',
-      refreshToken: 'rotated-refresh-token',
-      expiresAt: '2030-01-01T00:00:00.000Z',
-      scope: 'me:read offline_access',
+      store.get(owner.applicationUserId, owner.accountId),
+    ).resolves.toMatchObject({
+      credentials: {
+        accessToken: 'rotated-access-token',
+        refreshToken: 'rotated-refresh-token',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+        scope: 'me:read offline_access',
+      },
     })
   })
 
   it('reports that refresh is unavailable for an access-only grant', async () => {
     const store = new InMemoryCredentialStore()
     const protocol = new FakeProtocolClient()
-    await store.replace(owner.applicationUserId, owner.connectionId, {
+    await seedConnection(store, owner.applicationUserId, {
       accessToken: 'access-only',
       scope: 'me:read',
     })
@@ -85,11 +97,7 @@ describe('refresh orchestration', () => {
       protocol.refresh = vi
         .fn()
         .mockRejectedValue(new RefreshProtocolError('invalid_grant'))
-      await store.replace(
-        owner.applicationUserId,
-        owner.connectionId,
-        offlineCredentials,
-      )
+      await seedConnection(store, owner.applicationUserId, offlineCredentials)
 
       await expect(
         refreshConnection(protocol, store, coordinator, owner),
@@ -99,7 +107,7 @@ describe('refresh orchestration', () => {
       })
       expect(protocol.refresh).toHaveBeenCalledOnce()
       await expect(
-        store.get(owner.applicationUserId, owner.connectionId),
+        store.get(owner.applicationUserId, owner.accountId),
       ).resolves.toBeUndefined()
       await refreshConnection(protocol, store, coordinator, owner)
       expect(protocol.refresh).toHaveBeenCalledOnce()
@@ -112,11 +120,7 @@ describe('refresh orchestration', () => {
     protocol.refresh = vi
       .fn()
       .mockRejectedValue(new RefreshProtocolError('transient'))
-    await store.replace(
-      owner.applicationUserId,
-      owner.connectionId,
-      offlineCredentials,
-    )
+    await seedConnection(store, owner.applicationUserId, offlineCredentials)
 
     await expect(
       refreshConnection(
@@ -127,30 +131,25 @@ describe('refresh orchestration', () => {
       ),
     ).rejects.toBeInstanceOf(OAuthError)
     await expect(
-      store.get(owner.applicationUserId, owner.connectionId),
-    ).resolves.toEqual(offlineCredentials)
+      store.get(owner.applicationUserId, owner.accountId),
+    ).resolves.toMatchObject({ credentials: offlineCredentials })
   })
 
   it('requires reauthorization and never retries the old token after provider rotation but persistence failure', async () => {
     class FailingReplacementStore extends InMemoryCredentialStore {
-      override async replace(
+      override async upsert(
         applicationUserId: ApplicationUserId,
-        connectionId: ConnectionId,
-        credentials: CredentialSet,
+        connection: import('../../src/oauth/index.js').LunchMoneyConnection,
       ): Promise<void> {
-        if (credentials.refreshToken === 'rotated-refresh-token')
+        if (connection.credentials.refreshToken === 'rotated-refresh-token')
           throw new Error('simulated persistence failure')
-        return super.replace(applicationUserId, connectionId, credentials)
+        return super.upsert(applicationUserId, connection)
       }
     }
     const store = new FailingReplacementStore()
     const coordinator = new InMemoryRefreshCoordinator()
     const protocol = new FakeProtocolClient()
-    await store.replace(
-      owner.applicationUserId,
-      owner.connectionId,
-      offlineCredentials,
-    )
+    await seedConnection(store, owner.applicationUserId, offlineCredentials)
 
     await expect(
       refreshConnection(protocol, store, coordinator, owner),
@@ -159,7 +158,7 @@ describe('refresh orchestration', () => {
       reason: 'replacement_not_saved',
     })
     await expect(
-      store.get(owner.applicationUserId, owner.connectionId),
+      store.get(owner.applicationUserId, owner.accountId),
     ).resolves.toBeUndefined()
     await refreshConnection(protocol, store, coordinator, owner)
     expect(protocol.refreshed).toHaveLength(1)
@@ -169,12 +168,8 @@ describe('refresh orchestration', () => {
     const store = new InMemoryCredentialStore()
     const coordinator = new InMemoryRefreshCoordinator()
     const protocol = new FakeProtocolClient()
-    await store.replace(
-      owner.applicationUserId,
-      owner.connectionId,
-      offlineCredentials,
-    )
-    await store.replace(otherOwner.applicationUserId, otherOwner.connectionId, {
+    await seedConnection(store, owner.applicationUserId, offlineCredentials)
+    await seedConnection(store, otherOwner.applicationUserId, {
       ...offlineCredentials,
       refreshToken: 'other-refresh',
     })
@@ -206,11 +201,7 @@ describe('refresh orchestration', () => {
   it('cannot refresh or replace another application user credential', async () => {
     const store = new InMemoryCredentialStore()
     const protocol = new FakeProtocolClient()
-    await store.replace(
-      owner.applicationUserId,
-      owner.connectionId,
-      offlineCredentials,
-    )
+    await seedConnection(store, owner.applicationUserId, offlineCredentials)
 
     await expect(
       refreshConnection(
@@ -222,18 +213,38 @@ describe('refresh orchestration', () => {
     ).resolves.toEqual({ status: 'refresh_not_available' })
     expect(protocol.refreshed).toHaveLength(0)
     await expect(
-      store.get(owner.applicationUserId, owner.connectionId),
-    ).resolves.toEqual(offlineCredentials)
+      store.get(owner.applicationUserId, owner.accountId),
+    ).resolves.toMatchObject({ credentials: offlineCredentials })
   })
 
   it('keeps the storage boundary as one complete replacement operation', async () => {
-    const values = new Map<string, CredentialSet>([
-      ['owner', offlineCredentials],
+    const values = new Map<
+      string,
+      import('../../src/oauth/index.js').LunchMoneyConnection
+    >([
+      [
+        'owner',
+        {
+          accountId: 1 as import('../../src/oauth/index.js').AccountId,
+          budgetName: 'Primary',
+          credentials: offlineCredentials,
+          lunchMoneyUserId: 2,
+        },
+      ],
     ])
     const store: CredentialStore = {
       get: vi.fn(async () => values.get('owner')),
-      replace: vi.fn(async (_user, _connection, value) => {
+      list: vi.fn(async () => [...values.values()]),
+      upsert: vi.fn(async (_user, value) => {
         values.set('owner', value)
+      }),
+      replace: vi.fn(async (_user, _connection, value) => {
+        values.set('owner', {
+          accountId: 1 as import('../../src/oauth/index.js').AccountId,
+          budgetName: 'Primary',
+          credentials: value,
+          lunchMoneyUserId: 2,
+        })
       }),
       delete: vi.fn(async () => values.delete('owner')),
     }
@@ -243,15 +254,16 @@ describe('refresh orchestration', () => {
       new InMemoryRefreshCoordinator(),
       owner,
     )
-    expect(store.replace).toHaveBeenCalledOnce()
-    expect(store.replace).toHaveBeenCalledWith(
+    expect(store.upsert).toHaveBeenCalledOnce()
+    expect(store.upsert).toHaveBeenCalledWith(
       owner.applicationUserId,
-      owner.connectionId,
       expect.objectContaining({
-        accessToken: 'rotated-access-token',
-        refreshToken: 'rotated-refresh-token',
-        expiresAt: '2030-01-01T00:00:00.000Z',
-        scope: 'me:read offline_access',
+        credentials: expect.objectContaining({
+          accessToken: 'rotated-access-token',
+          refreshToken: 'rotated-refresh-token',
+          expiresAt: '2030-01-01T00:00:00.000Z',
+          scope: 'me:read offline_access',
+        }),
       }),
     )
   })

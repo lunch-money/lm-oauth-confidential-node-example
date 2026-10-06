@@ -1,0 +1,23 @@
+#!/bin/sh
+
+if git diff --cached --name-only --diff-filter=ACMR -- docs/WALKTHROUGH.md |
+  grep -Fqx 'docs/WALKTHROUGH.md'
+then
+  cat >&2 <<'EOF'
+
+Reminder: docs/WALKTHROUGH.md is the canonical Developer Portal walkthrough.
+
+After this sample commit exists, update the exact commit SHA in:
+  ../developer-docs/scripts/oauth-sample-walkthrough-source.json
+
+Then, from ../developer-docs, run:
+  npm run sync:oauth-sample -- --sample-root ../lm-oauth-confidential-node-example
+  npm run validate:oauth-sample -- --sample-root ../lm-oauth-confidential-node-example
+
+Review and stage only the source configuration and generated walkthrough.
+This reminder does not block the commit.
+
+EOF
+fi
+
+exit 0

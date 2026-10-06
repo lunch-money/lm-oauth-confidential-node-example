@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { OAuthError } from './errors.js'
 import type { CredentialStore } from './tokens.js'
-import type { ApplicationUserId, ConnectionId } from './types.js'
+import type { AccountId, ApplicationUserId, CredentialSet } from './types.js'
 
 const lunchMoneyProfileSchema = z
   .object({
@@ -18,29 +18,12 @@ const lunchMoneyProfileSchema = z
 /** Documented successful response from Lunch Money `GET /v2/me`. */
 export type LunchMoneyProfile = z.infer<typeof lunchMoneyProfileSchema>
 
-/**
- * Called when the connected application user chooses **Call /v2/me**. Loads
- * that user's server-held access token, calls Lunch Money, and returns a
- * validated profile without exposing the token. Throws safe errors when no
- * connection exists, `me:read` is missing, the response is malformed, or the
- * request fails.
- */
-export async function readLunchMoneyProfile(
-  store: CredentialStore,
-  owner: { applicationUserId: ApplicationUserId; connectionId: ConnectionId },
+/** Calls and validates `GET /v2/me` with a credential already held by the server. */
+export async function identifyLunchMoneyConnection(
+  credentials: CredentialSet,
   meEndpoint: URL,
   fetcher: typeof fetch = fetch,
 ): Promise<LunchMoneyProfile> {
-  const credentials = await store.get(
-    owner.applicationUserId,
-    owner.connectionId,
-  )
-  if (!credentials)
-    throw new OAuthError(
-      'credential_not_found',
-      'Connect Lunch Money before calling /v2/me.',
-    )
-
   let response: Response
   try {
     response = await fetcher(meEndpoint, {
@@ -77,4 +60,38 @@ export async function readLunchMoneyProfile(
     )
   }
   return profile.data
+}
+
+/**
+ * Called when the connected application user chooses **Call /v2/me**. Loads
+ * that user's server-held access token, calls Lunch Money, and returns a
+ * validated profile without exposing the token. Throws safe errors when no
+ * connection exists, `me:read` is missing, the response is malformed, or the
+ * request fails.
+ */
+export async function readLunchMoneyProfile(
+  store: CredentialStore,
+  owner:
+    | { applicationUserId: ApplicationUserId; accountId: AccountId }
+    | {
+        applicationUserId: ApplicationUserId
+        connectionId: import('./types.js').ConnectionId
+      },
+  meEndpoint: URL,
+  fetcher: typeof fetch = fetch,
+): Promise<LunchMoneyProfile> {
+  const connectionKey =
+    'accountId' in owner ? owner.accountId : owner.connectionId
+  const credentials = await store.get(owner.applicationUserId, connectionKey)
+  if (!credentials)
+    throw new OAuthError(
+      'credential_not_found',
+      'Connect Lunch Money before calling /v2/me.',
+    )
+
+  return identifyLunchMoneyConnection(
+    credentials.credentials,
+    meEndpoint,
+    fetcher,
+  )
 }

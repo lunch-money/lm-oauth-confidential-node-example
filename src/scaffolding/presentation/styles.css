@@ -49,7 +49,34 @@ pre {
   border-left: 0.25rem solid #246b45;
   background: #e9f6ee;
 }
+.success select {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 .small {
   font-size: 0.9rem;
   color: #59645d;
+}
+.teaching-panel {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid #cbd5ce;
+  border-radius: 0.5rem;
+  background: #f8faf8;
+}
+.teaching-panel summary {
+  font-weight: 700;
+  cursor: pointer;
+}
+.teaching-panel li {
+  margin: 0.75rem 0;
+}
+.credential-inspection {
+  margin-top: 1rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid #cbd5ce;
 }

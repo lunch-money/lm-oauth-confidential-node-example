@@ -1,4 +1,10 @@
-import type { ApplicationUserId, ConnectionId, CredentialSet } from './types.js'
+import type {
+  AccountId,
+  ApplicationUserId,
+  ConnectionId,
+  CredentialSet,
+  LunchMoneyConnection,
+} from './types.js'
 
 /**
  * Application-provided storage for Lunch Money credentials.
@@ -13,8 +19,14 @@ import type { ApplicationUserId, ConnectionId, CredentialSet } from './types.js'
 export interface CredentialStore {
   get(
     applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
-  ): Promise<CredentialSet | undefined>
+    accountId: AccountId | ConnectionId,
+  ): Promise<LunchMoneyConnection | undefined>
+  list(applicationUserId: ApplicationUserId): Promise<LunchMoneyConnection[]>
+  upsert(
+    applicationUserId: ApplicationUserId,
+    connection: LunchMoneyConnection,
+  ): Promise<void>
+  /** @deprecated Transitional adapter for lifecycle callers pending AccountId migration. */
   replace(
     applicationUserId: ApplicationUserId,
     connectionId: ConnectionId,
@@ -22,7 +34,7 @@ export interface CredentialStore {
   ): Promise<void>
   delete(
     applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
+    accountId: AccountId | ConnectionId,
   ): Promise<boolean>
 }
 
@@ -30,9 +42,9 @@ export interface CredentialStore {
 export async function readCredentials(
   store: CredentialStore,
   applicationUserId: ApplicationUserId,
-  connectionId: ConnectionId,
-): Promise<CredentialSet | undefined> {
-  return store.get(applicationUserId, connectionId)
+  accountId: AccountId | ConnectionId,
+): Promise<LunchMoneyConnection | undefined> {
+  return store.get(applicationUserId, accountId)
 }
 
 /**
@@ -58,7 +70,7 @@ export async function replaceCredentials(
 export async function deleteCredentials(
   store: CredentialStore,
   applicationUserId: ApplicationUserId,
-  connectionId: ConnectionId,
+  accountId: AccountId | ConnectionId,
 ): Promise<boolean> {
-  return store.delete(applicationUserId, connectionId)
+  return store.delete(applicationUserId, accountId)
 }

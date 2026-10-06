@@ -24,6 +24,16 @@ const attempt: AuthorizationAttempt = {
   codeVerifier: 'verifier',
   expiresAt: Number.MAX_SAFE_INTEGER,
 }
+const profileResponse = () =>
+  Response.json({
+    name: 'Demo User',
+    email: 'demo@example.com',
+    id: 42,
+    account_id: 84,
+    budget_name: 'Demo budget',
+    primary_currency: 'usd',
+    api_key_label: null,
+  })
 
 describe('OAuth callback', () => {
   it('stores exchanged credentials under the application user bound before redirect', async () => {
@@ -41,12 +51,23 @@ describe('OAuth callback', () => {
       ),
       user,
       session,
+      new URL('https://api.example/v2/me'),
+      async () => profileResponse(),
     )
 
-    expect(owner).toEqual({ applicationUserId: user, connectionId: connection })
-    expect(await credentials.get(user, connection)).toEqual(
-      protocol.credentials,
-    )
+    expect(owner).toEqual({ applicationUserId: user, accountId: 84 })
+    expect(
+      await credentials.get(
+        user,
+        84 as import('../../src/oauth/index.js').AccountId,
+      ),
+    ).toEqual({
+      accountId: 84,
+      budgetName: 'Demo budget',
+      credentials: protocol.credentials,
+      lunchMoneyUserId: 42,
+      lunchMoneyUserName: 'Demo User',
+    })
     expect(protocol.exchanged).toMatchObject({
       state: 'expected',
       codeVerifier: 'verifier',
@@ -70,10 +91,15 @@ describe('OAuth callback', () => {
       new URL('http://localhost/oauth/callback?code=code&state=expected'),
       user,
       session,
+      new URL('https://api.example/v2/me'),
+      async () => profileResponse(),
     )
-    expect(await credentials.get(user, connection)).toEqual(
-      protocol.credentials,
-    )
+    expect(
+      await credentials.get(
+        user,
+        84 as import('../../src/oauth/index.js').AccountId,
+      ),
+    ).toMatchObject({ credentials: protocol.credentials })
     expect(protocol.refreshed).toHaveLength(0)
   })
 

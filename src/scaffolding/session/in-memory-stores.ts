@@ -2,11 +2,13 @@ import type {
   ApplicationUserId,
   AuthorizationAttempt,
   AuthorizationAttemptStore,
+  AccountId,
   ConnectionId,
   CredentialSet,
   CredentialStore,
   RefreshCoordinator,
   RefreshOwner,
+  LunchMoneyConnection,
 } from '../../oauth/index.js'
 
 /**
@@ -48,20 +50,38 @@ export class InMemoryAuthorizationAttemptStore implements AuthorizationAttemptSt
  * management and lifecycle cleanup.
  */
 export class InMemoryCredentialStore implements CredentialStore {
-  private readonly values = new Map<string, CredentialSet>()
+  private readonly values = new Map<string, LunchMoneyConnection>()
 
   private key(
     applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
+    accountId: AccountId | ConnectionId,
   ): string {
-    return JSON.stringify([applicationUserId, connectionId])
+    return JSON.stringify([applicationUserId, accountId])
   }
 
   async get(
     applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
-  ): Promise<CredentialSet | undefined> {
-    return this.values.get(this.key(applicationUserId, connectionId))
+    accountId: AccountId | ConnectionId,
+  ): Promise<LunchMoneyConnection | undefined> {
+    return this.values.get(this.key(applicationUserId, accountId))
+  }
+
+  async list(
+    applicationUserId: ApplicationUserId,
+  ): Promise<LunchMoneyConnection[]> {
+    return [...this.values.entries()]
+      .filter(([key]) => key.startsWith(`["${applicationUserId}",`))
+      .map(([, connection]) => connection)
+  }
+
+  async upsert(
+    applicationUserId: ApplicationUserId,
+    connection: LunchMoneyConnection,
+  ): Promise<void> {
+    this.values.set(
+      this.key(applicationUserId, connection.accountId),
+      connection,
+    )
   }
 
   async replace(
@@ -69,14 +89,20 @@ export class InMemoryCredentialStore implements CredentialStore {
     connectionId: ConnectionId,
     credentials: CredentialSet,
   ): Promise<void> {
-    this.values.set(this.key(applicationUserId, connectionId), credentials)
+    this.values.set(this.key(applicationUserId, connectionId), {
+      accountId: Number.NaN as AccountId,
+      budgetName: 'Unidentified legacy connection',
+      credentials,
+      lunchMoneyUserId: Number.NaN,
+      lunchMoneyUserName: 'Unidentified legacy user',
+    })
   }
 
   async delete(
     applicationUserId: ApplicationUserId,
-    connectionId: ConnectionId,
+    accountId: AccountId | ConnectionId,
   ): Promise<boolean> {
-    return this.values.delete(this.key(applicationUserId, connectionId))
+    return this.values.delete(this.key(applicationUserId, accountId))
   }
 }
 
@@ -90,7 +116,10 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
   private readonly reauthorizationRequired = new Set<string>()
 
   private key(owner: RefreshOwner): string {
-    return JSON.stringify([owner.applicationUserId, owner.connectionId])
+    return JSON.stringify([
+      owner.applicationUserId,
+      'accountId' in owner ? owner.accountId : owner.connectionId,
+    ])
   }
 
   async runExclusive<T>(
@@ -121,6 +150,19 @@ export class InMemoryRefreshCoordinator implements RefreshCoordinator {
 }
 
 export interface BrowserSession {
+  activeAccountId?: AccountId
+  activeLunchMoneyUserId?: number
+  authorizationProcessing?: {
+    authorizedBudgetCount: number
+    budgetName: string
+    lunchMoneyUserName: string
+    result:
+      | 'connected_new_user'
+      | 'added_budget'
+      | 'reauthorized_budget'
+      | 'returned_user'
+      | 'switched_user'
+  }
   csrfToken: string
   message?: string
   profile?: import('../../oauth/lunch-money-api.js').LunchMoneyProfile

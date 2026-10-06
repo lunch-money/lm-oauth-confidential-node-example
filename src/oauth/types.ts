@@ -22,6 +22,9 @@ export type ApplicationSessionId = string & {
  * Money connections. Use the same value for later reads, refreshes, revocation,
  * and deletion of that connection.
  */
+export type AccountId = number & { readonly __brand: 'AccountId' }
+
+/** @deprecated Existing lifecycle callers migrate to AccountId in the UI/storage phase. */
 export type ConnectionId = string & { readonly __brand: 'ConnectionId' }
 
 /**
@@ -36,7 +39,8 @@ export type ConnectionId = string & { readonly __brand: 'ConnectionId' }
 export interface AuthorizationAttempt {
   readonly applicationSessionId: ApplicationSessionId
   readonly applicationUserId: ApplicationUserId
-  readonly connectionId: ConnectionId
+  /** @deprecated Ignored when identifying the authorized budgeting account. */
+  readonly connectionId?: ConnectionId
   readonly codeVerifier: string
   readonly expiresAt: number
   readonly state: string
@@ -55,6 +59,19 @@ export interface CredentialSet {
   /** Present only when the client's immutable registered scopes include `offline_access`. */
   readonly refreshToken?: string
   readonly scope: string
+}
+
+/**
+ * One identified Lunch Money budgeting-account connection. The account ID is
+ * learned from a validated `GET /v2/me` response after authorization; the
+ * display name is metadata and must never be used as the storage key.
+ */
+export interface LunchMoneyConnection {
+  readonly accountId: AccountId
+  readonly budgetName: string
+  readonly credentials: CredentialSet
+  readonly lunchMoneyUserId: number
+  readonly lunchMoneyUserName?: string
 }
 
 /** Result of revoking a credential and checking that the old token no longer works. */

@@ -9,7 +9,8 @@ import {
   revokeAndVerify,
   startAuthorization,
   type ApplicationUserId,
-  type ConnectionId,
+  type AccountId,
+  type LunchMoneyConnection,
   type OAuthProtocolClient,
 } from '../../oauth/index.js'
 import type { ApplicationConfiguration } from '../configuration.js'
@@ -21,16 +22,27 @@ import {
   InMemoryRefreshCoordinator,
 } from '../session/in-memory-stores.js'
 import { verifyCsrfToken } from '../session/csrf.js'
-import {
-  browserSession,
-  clearBrowserCookie,
-} from '../session/session-cookie.js'
+import { browserSession } from '../session/session-cookie.js'
 
 // Replace this fixed teaching identity with the application user ID read from
 // your authenticated server session on every request. Never accept the OAuth
 // credential owner from a form field, query parameter, or callback value.
 const DEMO_APPLICATION_USER_ID = 'local-demo-user' as ApplicationUserId
-const DEMO_CONNECTION_ID = 'default' as ConnectionId
+
+function sortedConnections(
+  connections: LunchMoneyConnection[],
+): LunchMoneyConnection[] {
+  return [...connections].sort(
+    (left, right) => left.accountId - right.accountId,
+  )
+}
+
+function requireActiveAccountId(activeAccountId?: AccountId): AccountId {
+  if (activeAccountId === undefined) {
+    throw new Error('No active Lunch Money budget is selected.')
+  }
+  return activeAccountId
+}
 
 export interface AppDependencies {
   readonly attempts?: InMemoryAuthorizationAttemptStore
@@ -61,10 +73,6 @@ export function createApp(
   const refreshCoordinator =
     dependencies.refreshCoordinator ?? new InMemoryRefreshCoordinator()
   const fetcher = dependencies.fetcher ?? fetch
-  const owner = {
-    applicationUserId: DEMO_APPLICATION_USER_ID,
-    connectionId: DEMO_CONNECTION_ID,
-  }
 
   app.use('*', async (context, next) => {
     context.header('Cache-Control', 'no-store')
@@ -79,12 +87,45 @@ export function createApp(
       configuration,
       browserSessions,
     )
-    const stored = await credentials.get(
-      owner.applicationUserId,
-      owner.connectionId,
+    const allConnections = sortedConnections(
+      await credentials.list(DEMO_APPLICATION_USER_ID),
+    )
+    const activeConnection = allConnections.find(
+      (connection) => connection.accountId === session.value.activeAccountId,
+    )
+    if (session.value.activeLunchMoneyUserId === undefined) {
+      const fallback = activeConnection ?? allConnections[0]
+      if (fallback) {
+        session.value.activeLunchMoneyUserId = fallback.lunchMoneyUserId
+        session.value.activeAccountId = fallback.accountId
+      }
+    }
+    const connections = allConnections.filter(
+      (connection) =>
+        connection.lunchMoneyUserId === session.value.activeLunchMoneyUserId,
+    )
+    if (
+      session.value.activeAccountId === undefined ||
+      !connections.some(
+        (connection) => connection.accountId === session.value.activeAccountId,
+      )
+    ) {
+      const fallback = connections[0]
+      if (fallback) session.value.activeAccountId = fallback.accountId
+      else delete session.value.activeAccountId
+    }
+    const stored = connections.find(
+      (connection) => connection.accountId === session.value.activeAccountId,
     )
     return context.html(
-      page({ ...session.value, canRefresh: Boolean(stored?.refreshToken) }),
+      page({
+        ...session.value,
+        canRefresh: Boolean(stored?.credentials.refreshToken),
+        connections: connections.map(({ accountId, budgetName }) => ({
+          accountId,
+          budgetName,
+        })),
+      }),
     )
   })
 
@@ -108,9 +149,10 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      delete session.value.authorizationProcessing
       // The Connect form starts OAuth for the user and browser session established by the server above.
       const url = await startAuthorization(protocol, attempts, {
-        ...owner,
+        applicationUserId: DEMO_APPLICATION_USER_ID,
         applicationSessionId: session.id,
         redirectUri: configuration.oauth.redirectUri,
       })
@@ -129,22 +171,108 @@ export function createApp(
       browserSessions,
     )
     try {
+      const previousActiveLunchMoneyUserId =
+        session.value.activeLunchMoneyUserId
+      const connectionsBeforeAuthorization = await credentials.list(
+        DEMO_APPLICATION_USER_ID,
+      )
       // Lunch Money returns here; completeAuthorization checks the saved attempt before storing credentials for its owner.
-      await completeAuthorization(
+      const connected = await completeAuthorization(
         protocol,
         attempts,
         credentials,
         new URL(context.req.url),
-        owner.applicationUserId,
+        DEMO_APPLICATION_USER_ID,
         session.id,
+        configuration.oauth.meEndpoint,
+        fetcher,
       )
-      refreshCoordinator.clearReauthorizationRequired(owner)
-      session.value.message =
-        'Lunch Money is connected. The credential is stored only on the server.'
+      const connectedRecord = await credentials.get(
+        DEMO_APPLICATION_USER_ID,
+        connected.accountId,
+      )
+      if (!connectedRecord) throw new Error('Connected budget was not stored.')
+      session.value.activeAccountId = connected.accountId
+      session.value.activeLunchMoneyUserId = connectedRecord.lunchMoneyUserId
+      delete session.value.profile
+      refreshCoordinator.clearReauthorizationRequired({
+        applicationUserId: DEMO_APPLICATION_USER_ID,
+        accountId: connected.accountId,
+      })
+      const authorizedBudgetCount = (
+        await credentials.list(DEMO_APPLICATION_USER_ID)
+      ).filter(
+        (connection) =>
+          connection.lunchMoneyUserId === connectedRecord.lunchMoneyUserId,
+      ).length
+      const existingConnection = connectionsBeforeAuthorization.find(
+        (connection) => connection.accountId === connected.accountId,
+      )
+      const returningToKnownUser = connectionsBeforeAuthorization.some(
+        (connection) =>
+          connection.lunchMoneyUserId === connectedRecord.lunchMoneyUserId,
+      )
+      session.value.authorizationProcessing = {
+        authorizedBudgetCount,
+        budgetName: connectedRecord.budgetName,
+        lunchMoneyUserName:
+          connectedRecord.lunchMoneyUserName ?? 'Lunch Money user',
+        result:
+          previousActiveLunchMoneyUserId === undefined
+            ? 'connected_new_user'
+            : previousActiveLunchMoneyUserId !==
+                connectedRecord.lunchMoneyUserId
+              ? returningToKnownUser
+                ? 'returned_user'
+                : 'switched_user'
+              : existingConnection
+                ? 'reauthorized_budget'
+                : 'added_budget',
+      }
+      session.value.message = `${connectedRecord.lunchMoneyUserName ?? 'Lunch Money user'} is connected. ${authorizedBudgetCount} authorized ${authorizedBudgetCount === 1 ? 'budget' : 'budgets'}.`
     } catch (error) {
+      delete session.value.authorizationProcessing
       session.value.message = publicErrorMessage(error)
       console.error(JSON.stringify({ event: 'oauth.callback.failed' }))
     }
+    return context.redirect('/')
+  })
+
+  app.post('/connections/active', async (context) => {
+    const session = await browserSession(
+      context,
+      configuration,
+      browserSessions,
+    )
+    if (!(await verifyCsrfToken(context, session.value))) {
+      return context.text('Invalid CSRF token.', 403)
+    }
+    const body = await context.req.parseBody()
+    const submitted = body.account_id
+    const parsed =
+      typeof submitted === 'string' && /^\d+$/.test(submitted)
+        ? Number(submitted)
+        : Number.NaN
+    if (!Number.isSafeInteger(parsed)) {
+      return context.text('Invalid budgeting account.', 400)
+    }
+    const accountId = parsed as AccountId
+    const connection = await credentials.get(
+      DEMO_APPLICATION_USER_ID,
+      accountId,
+    )
+    if (
+      !connection ||
+      connection.lunchMoneyUserId !== session.value.activeLunchMoneyUserId
+    ) {
+      return context.text('Budgeting account not found.', 404)
+    }
+    session.value.activeAccountId = accountId
+    delete session.value.authorizationProcessing
+    delete session.value.profile
+    delete session.value.refresh
+    delete session.value.revocation
+    session.value.message = `Active budget changed to ${connection.budgetName}.`
     return context.redirect('/')
   })
 
@@ -161,7 +289,10 @@ export function createApp(
       // The profile button makes a server-side API call with credentials stored for this application user.
       session.value.profile = await readLunchMoneyProfile(
         credentials,
-        owner,
+        {
+          applicationUserId: DEMO_APPLICATION_USER_ID,
+          accountId: requireActiveAccountId(session.value.activeAccountId),
+        },
         configuration.oauth.meEndpoint,
         fetcher,
       )
@@ -182,12 +313,16 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      delete session.value.authorizationProcessing
       // The refresh button asks the teaching workflow to replace this connection's credential set safely.
       session.value.refresh = await refreshConnection(
         protocol,
         credentials,
         refreshCoordinator,
-        owner,
+        {
+          applicationUserId: DEMO_APPLICATION_USER_ID,
+          accountId: requireActiveAccountId(session.value.activeAccountId),
+        },
       )
       session.value.message =
         session.value.refresh.status === 'refreshed'
@@ -213,15 +348,28 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     try {
+      delete session.value.authorizationProcessing
       // The disconnect button revokes server-held credentials, verifies the old access token, and removes the local set.
       session.value.revocation = await revokeAndVerify(
         protocol,
         credentials,
-        owner,
+        {
+          applicationUserId: DEMO_APPLICATION_USER_ID,
+          accountId: requireActiveAccountId(session.value.activeAccountId),
+        },
         configuration.oauth.meEndpoint,
         fetcher,
       )
       delete session.value.profile
+      const remaining = sortedConnections(
+        await credentials.list(DEMO_APPLICATION_USER_ID),
+      ).filter(
+        (connection) =>
+          connection.lunchMoneyUserId === session.value.activeLunchMoneyUserId,
+      )
+      const fallback = remaining[0]
+      if (fallback) session.value.activeAccountId = fallback.accountId
+      else delete session.value.activeAccountId
       session.value.message =
         'Lunch Money access was revoked and the old access token was rejected.'
     } catch (error) {
@@ -240,14 +388,26 @@ export function createApp(
       return context.text('Invalid CSRF token.', 403)
     }
     // Reset clears only this sample's local state; it is not a substitute for revoking access at Lunch Money.
-    await deleteCredentials(
-      credentials,
-      owner.applicationUserId,
-      owner.connectionId,
+    delete session.value.authorizationProcessing
+    const accountId = requireActiveAccountId(session.value.activeAccountId)
+    await deleteCredentials(credentials, DEMO_APPLICATION_USER_ID, accountId)
+    refreshCoordinator.clearReauthorizationRequired({
+      applicationUserId: DEMO_APPLICATION_USER_ID,
+      accountId,
+    })
+    const remaining = sortedConnections(
+      await credentials.list(DEMO_APPLICATION_USER_ID),
+    ).filter(
+      (connection) =>
+        connection.lunchMoneyUserId === session.value.activeLunchMoneyUserId,
     )
-    refreshCoordinator.clearReauthorizationRequired(owner)
-    browserSessions.delete(session.id)
-    clearBrowserCookie(context)
+    const fallback = remaining[0]
+    if (fallback) session.value.activeAccountId = fallback.accountId
+    else delete session.value.activeAccountId
+    delete session.value.profile
+    delete session.value.refresh
+    delete session.value.revocation
+    session.value.message = 'The active budget was removed from this sample.'
     return context.redirect('/')
   })
 

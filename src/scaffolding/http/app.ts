@@ -8,6 +8,7 @@ import {
   refreshConnection,
   revokeAndVerify,
   startAuthorization,
+  safeOAuthErrorDiagnostic,
   type ApplicationUserId,
   type AccountId,
   type ConnectionIdentity,
@@ -21,6 +22,7 @@ import {
   InMemoryBrowserSessionStore,
   InMemoryCredentialStore,
   InMemoryRefreshCoordinator,
+  type BrowserSession,
 } from '../session/in-memory-stores.js'
 import { verifyCsrfToken } from '../session/csrf.js'
 import { browserSession } from '../session/session-cookie.js'
@@ -29,6 +31,8 @@ import { browserSession } from '../session/session-cookie.js'
 // your authenticated server session on every request. Never accept the OAuth
 // credential owner from a form field, query parameter, or callback value.
 const DEMO_APPLICATION_USER_ID = 'local-demo-user' as ApplicationUserId
+const INVALID_CSRF_MESSAGE =
+  'Invalid CSRF token. Go back, reload the page, and try again.'
 
 function sortedConnections(
   connections: LunchMoneyConnection[],
@@ -36,6 +40,12 @@ function sortedConnections(
   return [...connections].sort(
     (left, right) => left.accountId - right.accountId,
   )
+}
+
+function collapseAuthorizationProcessing(session: BrowserSession): void {
+  if (session.authorizationProcessing) {
+    session.authorizationProcessing.open = false
+  }
 }
 
 function requireActiveConnectionIdentity(
@@ -102,17 +112,23 @@ export function createApp(
         connection.accountId === session.value.activeAccountId &&
         connection.lunchMoneyUserId === session.value.activeLunchMoneyUserId,
     )
-    if (session.value.activeLunchMoneyUserId === undefined) {
+    if (
+      !session.value.hideStoredConnections &&
+      session.value.activeLunchMoneyUserId === undefined
+    ) {
       const fallback = activeConnection ?? allConnections[0]
       if (fallback) {
         session.value.activeLunchMoneyUserId = fallback.lunchMoneyUserId
         session.value.activeAccountId = fallback.accountId
       }
     }
-    const connections = allConnections.filter(
-      (connection) =>
-        connection.lunchMoneyUserId === session.value.activeLunchMoneyUserId,
-    )
+    const connections = session.value.hideStoredConnections
+      ? []
+      : allConnections.filter(
+          (connection) =>
+            connection.lunchMoneyUserId ===
+            session.value.activeLunchMoneyUserId,
+        )
     if (
       session.value.activeAccountId === undefined ||
       !connections.some(
@@ -155,10 +171,10 @@ export function createApp(
       browserSessions,
     )
     if (!(await verifyCsrfToken(context, session.value))) {
-      return context.text('Invalid CSRF token.', 403)
+      return context.text(INVALID_CSRF_MESSAGE, 403)
     }
     try {
-      delete session.value.authorizationProcessing
+      collapseAuthorizationProcessing(session.value)
       // The Connect form starts OAuth for the user and browser session established by the server above.
       const url = await startAuthorization(protocol, attempts, {
         applicationUserId: DEMO_APPLICATION_USER_ID,
@@ -203,6 +219,7 @@ export function createApp(
       if (!connectedRecord) throw new Error('Connected budget was not stored.')
       session.value.activeAccountId = connected.accountId
       session.value.activeLunchMoneyUserId = connectedRecord.lunchMoneyUserId
+      delete session.value.hideStoredConnections
       delete session.value.profile
       refreshCoordinator.clearReauthorizationRequired({
         applicationUserId: DEMO_APPLICATION_USER_ID,
@@ -229,6 +246,7 @@ export function createApp(
         budgetName: connectedRecord.budgetName,
         lunchMoneyUserName:
           connectedRecord.lunchMoneyUserName ?? 'Lunch Money user',
+        open: true,
         result:
           previousActiveLunchMoneyUserId === undefined
             ? 'connected_new_user'
@@ -244,8 +262,19 @@ export function createApp(
       session.value.message = `${connectedRecord.lunchMoneyUserName ?? 'Lunch Money user'} is connected. ${authorizedBudgetCount} authorized ${authorizedBudgetCount === 1 ? 'budget' : 'budgets'}.`
     } catch (error) {
       delete session.value.authorizationProcessing
+      delete session.value.activeAccountId
+      delete session.value.activeLunchMoneyUserId
+      delete session.value.profile
+      delete session.value.refresh
+      delete session.value.revocation
+      session.value.hideStoredConnections = true
       session.value.message = publicErrorMessage(error)
-      console.error(JSON.stringify({ event: 'oauth.callback.failed' }))
+      console.error(
+        JSON.stringify({
+          event: 'oauth.callback.failed',
+          ...safeOAuthErrorDiagnostic(error),
+        }),
+      )
     }
     return context.redirect('/')
   })
@@ -257,7 +286,7 @@ export function createApp(
       browserSessions,
     )
     if (!(await verifyCsrfToken(context, session.value))) {
-      return context.text('Invalid CSRF token.', 403)
+      return context.text(INVALID_CSRF_MESSAGE, 403)
     }
     const body = await context.req.parseBody()
     const submitted = body.account_id
@@ -281,7 +310,7 @@ export function createApp(
       return context.text('Budgeting account not found.', 404)
     }
     session.value.activeAccountId = accountId
-    delete session.value.authorizationProcessing
+    collapseAuthorizationProcessing(session.value)
     delete session.value.profile
     delete session.value.refresh
     delete session.value.revocation
@@ -296,8 +325,9 @@ export function createApp(
       browserSessions,
     )
     if (!(await verifyCsrfToken(context, session.value))) {
-      return context.text('Invalid CSRF token.', 403)
+      return context.text(INVALID_CSRF_MESSAGE, 403)
     }
+    collapseAuthorizationProcessing(session.value)
     try {
       // The profile button makes a server-side API call with credentials stored for this application user.
       session.value.profile = await readLunchMoneyProfile(
@@ -326,10 +356,10 @@ export function createApp(
       browserSessions,
     )
     if (!(await verifyCsrfToken(context, session.value))) {
-      return context.text('Invalid CSRF token.', 403)
+      return context.text(INVALID_CSRF_MESSAGE, 403)
     }
     try {
-      delete session.value.authorizationProcessing
+      collapseAuthorizationProcessing(session.value)
       // The refresh button asks the teaching workflow to replace this connection's credential set safely.
       session.value.refresh = await refreshConnection(
         protocol,
@@ -364,10 +394,10 @@ export function createApp(
       browserSessions,
     )
     if (!(await verifyCsrfToken(context, session.value))) {
-      return context.text('Invalid CSRF token.', 403)
+      return context.text(INVALID_CSRF_MESSAGE, 403)
     }
     try {
-      delete session.value.authorizationProcessing
+      collapseAuthorizationProcessing(session.value)
       // The disconnect button revokes server-held credentials, verifies the old access token, and removes the local set.
       session.value.revocation = await revokeAndVerify(
         protocol,
@@ -407,10 +437,10 @@ export function createApp(
       browserSessions,
     )
     if (!(await verifyCsrfToken(context, session.value))) {
-      return context.text('Invalid CSRF token.', 403)
+      return context.text(INVALID_CSRF_MESSAGE, 403)
     }
     // Reset clears only this sample's local state; it is not a substitute for revoking access at Lunch Money.
-    delete session.value.authorizationProcessing
+    collapseAuthorizationProcessing(session.value)
     const identity = requireActiveConnectionIdentity(
       session.value.activeAccountId,
       session.value.activeLunchMoneyUserId,

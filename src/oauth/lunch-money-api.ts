@@ -41,26 +41,43 @@ export async function identifyLunchMoneyConnection(
       'resource_failure',
       'Lunch Money /v2/me could not be reached.',
       cause,
+      { failureReason: 'network_error' },
     )
   }
   if (response.status === 403) {
     throw new OAuthError(
       'insufficient_scope',
       'The registered client needs the me:read scope.',
+      undefined,
+      { failureReason: 'http_error', httpStatus: response.status },
     )
   }
   if (!response.ok)
     throw new OAuthError(
       'resource_failure',
       'Lunch Money rejected the /v2/me request.',
+      undefined,
+      { failureReason: 'http_error', httpStatus: response.status },
     )
 
-  const body: unknown = await response.json().catch(() => undefined)
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch (cause) {
+    throw new OAuthError(
+      'resource_failure',
+      'Lunch Money /v2/me returned an invalid response.',
+      cause,
+      { failureReason: 'invalid_json', httpStatus: response.status },
+    )
+  }
   const profile = lunchMoneyProfileSchema.safeParse(body)
   if (!profile.success) {
     throw new OAuthError(
       'resource_failure',
       'Lunch Money /v2/me returned an invalid response.',
+      undefined,
+      { failureReason: 'schema_mismatch', httpStatus: response.status },
     )
   }
   return profile.data

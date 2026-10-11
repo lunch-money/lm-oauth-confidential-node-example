@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  identifyLunchMoneyConnection,
   readLunchMoneyProfile,
   revokeAndVerify,
   type AccountId,
@@ -81,7 +82,26 @@ describe('/v2/me and revocation', () => {
             Response.json({ secret: 'details' }, { status: 403 }),
           ),
       ),
-    ).rejects.toMatchObject({ code: 'insufficient_scope' })
+    ).rejects.toMatchObject({
+      code: 'insufficient_scope',
+      diagnostic: { failureReason: 'http_error', httpStatus: 403 },
+    })
+  })
+
+  it('records a safe HTTP status diagnostic without reading the response body', async () => {
+    const response = new Response('private upstream details', { status: 401 })
+    const json = vi.spyOn(response, 'json')
+    await expect(
+      identifyLunchMoneyConnection(
+        { accessToken: 'private-token', scope: 'me:read' },
+        new URL('https://issuer.example/v2/me'),
+        vi.fn<typeof fetch>().mockResolvedValue(response),
+      ),
+    ).rejects.toMatchObject({
+      code: 'resource_failure',
+      diagnostic: { failureReason: 'http_error', httpStatus: 401 },
+    })
+    expect(json).not.toHaveBeenCalled()
   })
 
   it('rejects malformed successful responses', async () => {
@@ -97,7 +117,10 @@ describe('/v2/me and revocation', () => {
         new URL('https://issuer.example/v2/me'),
         vi.fn<typeof fetch>().mockResolvedValue(new Response('not-json')),
       ),
-    ).rejects.toMatchObject({ code: 'resource_failure' })
+    ).rejects.toMatchObject({
+      code: 'resource_failure',
+      diagnostic: { failureReason: 'invalid_json', httpStatus: 200 },
+    })
   })
 
   it('rejects successful responses with fields outside the documented user schema', async () => {
@@ -117,7 +140,10 @@ describe('/v2/me and revocation', () => {
             Response.json({ ...userProfile, unexpected: 'not in userObject' }),
           ),
       ),
-    ).rejects.toMatchObject({ code: 'resource_failure' })
+    ).rejects.toMatchObject({
+      code: 'resource_failure',
+      diagnostic: { failureReason: 'schema_mismatch', httpStatus: 200 },
+    })
   })
 
   it('revokes, verifies the old token fails, and then deletes local credentials', async () => {

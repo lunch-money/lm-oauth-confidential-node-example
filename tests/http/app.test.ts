@@ -85,13 +85,23 @@ describe('Hono scaffolding', () => {
   ])('rejects missing and incorrect CSRF tokens on POST %s', async (route) => {
     const app = createApp(configuration, new FakeProtocolClient())
     const session = await openSession(app)
-    expect((await app.request(route, formRequest(session.cookie))).status).toBe(
-      403,
+    const missingTokenResponse = await app.request(
+      route,
+      formRequest(session.cookie),
     )
-    expect(
-      (await app.request(route, formRequest(session.cookie, 'incorrect-token')))
-        .status,
-    ).toBe(403)
+    expect(missingTokenResponse.status).toBe(403)
+    expect(await missingTokenResponse.text()).toBe(
+      'Invalid CSRF token. Go back, reload the page, and try again.',
+    )
+
+    const incorrectTokenResponse = await app.request(
+      route,
+      formRequest(session.cookie, 'incorrect-token'),
+    )
+    expect(incorrectTokenResponse.status).toBe(403)
+    expect(await incorrectTokenResponse.text()).toBe(
+      'Invalid CSRF token. Go back, reload the page, and try again.',
+    )
   })
 
   it('does not require a form CSRF token on the OAuth callback GET', async () => {
@@ -108,6 +118,61 @@ describe('Hono scaffolding', () => {
     )
     expect(callback.status).toBe(302)
     expect(protocol.exchanged).toBeDefined()
+  })
+
+  it('hides the previous user after a new authorization fails during /v2/me and logs only safe diagnostics', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Previous budget')))
+      .mockResolvedValueOnce(Response.json(profile(84, 'Previous budget')))
+      .mockResolvedValueOnce(
+        new Response('private upstream details', { status: 401 }),
+      )
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const app = createApp(configuration, new FakeProtocolClient(), { fetcher })
+    const session = await openSession(app)
+
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=first&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=second&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain(
+      '<p class="notice">Lunch Money rejected the /v2/me request.</p>',
+    )
+    expect(html).toContain('No Lunch Money budget is connected.')
+    expect(html).toContain('Connect Lunch Money')
+    expect(html).not.toContain('Previous budget')
+    expect(html).not.toContain('<h2>GET /v2/me</h2>')
+    expect(html).not.toContain('Call /v2/me')
+    expect(html).not.toContain('How this authorization was processed')
+    expect(errorLog).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        event: 'oauth.callback.failed',
+        errorCode: 'resource_failure',
+        failureReason: 'http_error',
+        httpStatus: 401,
+      }),
+    )
+    expect(errorLog.mock.lastCall?.[0]).not.toContain(
+      'private upstream details',
+    )
+    errorLog.mockRestore()
   })
 
   it('rejects a callback in a different browser session even for the fixed demo user', async () => {
@@ -127,7 +192,7 @@ describe('Hono scaffolding', () => {
     expect(protocol.exchanged).toBeUndefined()
   })
 
-  it('never returns credentials in browser HTML after callback and /v2/me', async () => {
+  it('never returns credentials in browser HTML and clears the authorization explanation after /v2/me', async () => {
     const protocol = new FakeProtocolClient()
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       Response.json({
@@ -150,6 +215,19 @@ describe('Hono scaffolding', () => {
       '/oauth/callback?code=private-code&state=generated-state',
       { headers: { cookie: session.cookie } },
     )
+    const callbackHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(callbackHtml).toContain('How this authorization was processed')
+    expect(callbackHtml).toContain('<details class="teaching-panel" open>')
+    expect(callbackHtml).toContain('Inspect the credential response locally')
+    expect(callbackHtml).toContain('exchangeCallback()')
+    expect(callbackHtml).toContain('accessToken: string')
+    expect(callbackHtml).not.toMatch(/github\.com[^"']+#L\d+/)
+    expect(
+      callbackHtml.match(/target="_blank" rel="noopener noreferrer"/g),
+    ).toHaveLength(4)
+
     await app.request('/me', formRequest(session.cookie, session.csrfToken))
     const html = await (
       await app.request('/', { headers: { cookie: session.cookie } })
@@ -160,17 +238,12 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('server-only-verifier')
     expect(html).not.toContain(configuration.oauth.clientSecret)
     expect(html).toContain('How this authorization was processed')
-    expect(html).toContain('Inspect the credential response locally')
-    expect(html).toContain('exchangeCallback()')
-    expect(html).toContain('accessToken: string')
-    expect(html).not.toMatch(/github\.com[^"']+#L\d+/)
-    expect(
-      html.match(/target="_blank" rel="noopener noreferrer"/g),
-    ).toHaveLength(4)
+    expect(html).toContain('<details class="teaching-panel">')
+    expect(html).not.toContain('<details class="teaching-panel" open>')
   })
 
   it.each(['/revoke', '/reset'])(
-    'clears the authorization explanation after POST %s',
+    'collapses the authorization explanation after POST %s',
     async (route) => {
       const fetcher = vi
         .fn<typeof fetch>()
@@ -191,14 +264,15 @@ describe('Hono scaffolding', () => {
         await (
           await app.request('/', { headers: { cookie: session.cookie } })
         ).text(),
-      ).toContain('How this authorization was processed')
+      ).toContain('<details class="teaching-panel" open>')
 
       await app.request(route, formRequest(session.cookie, session.csrfToken))
-      expect(
-        await (
-          await app.request('/', { headers: { cookie: session.cookie } })
-        ).text(),
-      ).not.toContain('How this authorization was processed')
+      const html = await (
+        await app.request('/', { headers: { cookie: session.cookie } })
+      ).text()
+      expect(html).toContain('How this authorization was processed')
+      expect(html).toContain('<details class="teaching-panel">')
+      expect(html).not.toContain('<details class="teaching-panel" open>')
     },
   )
 
@@ -297,7 +371,8 @@ describe('Hono scaffolding', () => {
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
     expect(html).toContain('No profile has been loaded')
-    expect(html).not.toContain('How this authorization was processed')
+    expect(html).toContain('<details class="teaching-panel">')
+    expect(html).not.toContain('<details class="teaching-panel" open>')
 
     await app.request('/me', formRequest(session.cookie, session.csrfToken))
     html = await (

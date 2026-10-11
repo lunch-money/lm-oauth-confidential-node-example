@@ -9,15 +9,38 @@ export type OAuthErrorCode =
   | 'reauthorization_required'
   | 'resource_failure'
 
+export interface OAuthErrorDiagnostic {
+  readonly failureReason?:
+    'http_error' | 'invalid_json' | 'network_error' | 'schema_mismatch'
+  readonly httpStatus?: number
+}
+
 /** A safe domain error suitable for mapping to an HTTP response or redacted log event. */
 export class OAuthError extends Error {
   constructor(
     public readonly code: OAuthErrorCode,
     message: string,
     public readonly cause?: unknown,
+    public readonly diagnostic?: OAuthErrorDiagnostic,
   ) {
     super(message)
     this.name = 'OAuthError'
+  }
+}
+
+/** Returns only allowlisted diagnostic fields that cannot contain credentials or provider bodies. */
+export function safeOAuthErrorDiagnostic(
+  error: unknown,
+): Record<string, unknown> {
+  if (!(error instanceof OAuthError)) return { errorCode: 'unexpected_error' }
+  return {
+    errorCode: error.code,
+    ...(error.diagnostic?.failureReason
+      ? { failureReason: error.diagnostic.failureReason }
+      : {}),
+    ...(error.diagnostic?.httpStatus === undefined
+      ? {}
+      : { httpStatus: error.diagnostic.httpStatus }),
   }
 }
 

@@ -16,6 +16,7 @@ export function page(input: {
     authorizedBudgetCount: number
     budgetName: string
     lunchMoneyUserName: string
+    open: boolean
     result:
       | 'connected_new_user'
       | 'added_budget'
@@ -88,6 +89,7 @@ function authorizationProcessingPanel(input: {
   authorizedBudgetCount: number
   budgetName: string
   lunchMoneyUserName: string
+  open: boolean
   result:
     | 'connected_new_user'
     | 'added_budget'
@@ -104,7 +106,7 @@ function authorizationProcessingPanel(input: {
   }[input.result]
   const budgetCount = `${input.authorizedBudgetCount} authorized ${input.authorizedBudgetCount === 1 ? 'budget' : 'budgets'}`
 
-  return `<details class="teaching-panel" open><summary>How this authorization was processed</summary><ol><li>The authorization server called the registered redirect URI. See the <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/scaffolding/http/app.ts" target="_blank" rel="noopener noreferrer"><code>/oauth/callback</code> route</a>.</li><li>The callback validated the saved attempt and exchanged the authorization code for credentials on the server. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/callback.ts" target="_blank" rel="noopener noreferrer"><code>completeAuthorization</code></a>.</li><li>The server called <code>GET /v2/me</code> with the access token to identify the Lunch Money user and budget. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/lunch-money-api.ts" target="_blank" rel="noopener noreferrer"><code>identifyLunchMoneyConnection</code></a>.</li><li><strong>Result:</strong> ${escapeHtml(result)} The active user now has ${escapeHtml(budgetCount)}.</li></ol><div class="credential-inspection"><p><strong>Inspect the credential response locally</strong></p><p>Set a debugger breakpoint immediately after <code>exchangeCallback()</code> returns in <code>completeAuthorization</code>, then inspect <code>tokenSet</code>. The normalized server-confidential value has this shape:</p><pre><code>{
+  return `<details class="teaching-panel"${input.open ? ' open' : ''}><summary>How this authorization was processed</summary><ol><li>The authorization server called the registered redirect URI. See the <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/scaffolding/http/app.ts" target="_blank" rel="noopener noreferrer"><code>/oauth/callback</code> route</a>.</li><li>The callback validated the saved attempt and exchanged the authorization code for credentials on the server. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/callback.ts" target="_blank" rel="noopener noreferrer"><code>completeAuthorization</code></a>.</li><li>The server called <code>GET /v2/me</code> with the access token to identify the Lunch Money user and budget. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/lunch-money-api.ts" target="_blank" rel="noopener noreferrer"><code>identifyLunchMoneyConnection</code></a>.</li><li><strong>Result:</strong> ${escapeHtml(result)} The active user now has ${escapeHtml(budgetCount)}.</li></ol><div class="credential-inspection"><p><strong>Inspect the credential response locally</strong></p><p>Set a debugger breakpoint immediately after <code>exchangeCallback()</code> returns in <code>completeAuthorization</code>, then inspect <code>tokenSet</code>. The normalized server-confidential value has this shape:</p><pre><code>{
   accessToken: string
   refreshToken?: string
   expiresAt?: string

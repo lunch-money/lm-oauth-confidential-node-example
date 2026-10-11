@@ -143,6 +143,7 @@ export interface BrowserSession {
     authorizedBudgetCount: number
     budgetName: string
     lunchMoneyUserName: string
+    open: boolean
     result:
       | 'connected_new_user'
       | 'added_budget'
@@ -151,6 +152,7 @@ export interface BrowserSession {
       | 'switched_user'
   }
   csrfToken: string
+  hideStoredConnections?: boolean
   message?: string
   profile?: import('../../oauth/lunch-money-api.js').LunchMoneyProfile
   revocation?: { revoked: boolean; oldCredentialRejected: boolean }

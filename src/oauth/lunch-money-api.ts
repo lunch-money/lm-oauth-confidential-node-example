@@ -1,4 +1,8 @@
-import { z } from 'zod'
+import {
+  LunchMoneyClient,
+  LunchMoneyError,
+  type User,
+} from '@lunch-money/lunch-money-js-v2'
 import { OAuthError } from './errors.js'
 import type { CredentialStore } from './tokens.js'
 import type {
@@ -7,36 +11,87 @@ import type {
   CredentialSet,
 } from './types.js'
 
-const lunchMoneyProfileSchema = z
-  .object({
-    name: z.string(),
-    email: z.string(),
-    id: z.number().int(),
-    account_id: z.number().int(),
-    budget_name: z.string(),
-    primary_currency: z.string(),
-    api_key_label: z.string().nullable(),
-  })
-  .strict()
+const profileFields = [
+  'name',
+  'email',
+  'id',
+  'account_id',
+  'budget_name',
+  'primary_currency',
+  'api_key_label',
+] as const satisfies readonly (keyof User)[]
 
-/** Documented successful response from Lunch Money `GET /v2/me`. */
-export type LunchMoneyProfile = z.infer<typeof lunchMoneyProfileSchema>
+/** User and budgeting-account details returned by the official SDK for `GET /v2/me`. */
+export type LunchMoneyProfile = User
 
-/** Calls and validates `GET /v2/me` with a credential already held by the server. */
+function hasRequiredProfileFields(body: User): boolean {
+  return !(
+    typeof body !== 'object' ||
+    body === null ||
+    profileFields.some((field) => body[field] === undefined)
+  )
+}
+
+function sdkBaseUrl(meEndpoint: URL): string {
+  const baseUrl = new URL(meEndpoint)
+  if (!baseUrl.pathname.endsWith('/me')) {
+    throw new OAuthError(
+      'resource_failure',
+      'Lunch Money /v2/me is not configured correctly.',
+    )
+  }
+  baseUrl.pathname = baseUrl.pathname.slice(0, -'/me'.length)
+  baseUrl.search = ''
+  baseUrl.hash = ''
+  return baseUrl.href.replace(/\/$/, '')
+}
+
+/** Calls `GET /v2/me` with a server-held token and rejects a response missing a required profile property. */
 export async function identifyLunchMoneyConnection(
   credentials: CredentialSet,
   meEndpoint: URL,
   fetcher: typeof fetch = fetch,
 ): Promise<LunchMoneyProfile> {
-  let response: Response
+  let response: Response | undefined
+  const client = new LunchMoneyClient({
+    apiKey: credentials.accessToken,
+    baseUrl: sdkBaseUrl(meEndpoint),
+    fetch: async (request) => {
+      response = await fetcher(request)
+      return response
+    },
+  })
+  let body: User
   try {
-    response = await fetcher(meEndpoint, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${credentials.accessToken}`,
-      },
-    })
+    body = await client.user.getMe()
   } catch (cause) {
+    if (cause instanceof LunchMoneyError) {
+      if (cause.status === 403) {
+        throw new OAuthError(
+          'insufficient_scope',
+          'The registered client needs the me:read scope.',
+          cause,
+          { failureReason: 'http_error', httpStatus: cause.status },
+        )
+      }
+      throw new OAuthError(
+        'resource_failure',
+        'Lunch Money rejected the /v2/me request.',
+        cause,
+        {
+          failureReason: 'http_error',
+          ...(cause.status === undefined ? {} : { httpStatus: cause.status }),
+        },
+      )
+    }
+    if (response) {
+      throw new OAuthError(
+        'resource_failure',
+        'Lunch Money /v2/me returned an invalid response.',
+        cause,
+        { failureReason: 'invalid_json', httpStatus: response.status },
+      )
+    }
     throw new OAuthError(
       'resource_failure',
       'Lunch Money /v2/me could not be reached.',
@@ -44,51 +99,26 @@ export async function identifyLunchMoneyConnection(
       { failureReason: 'network_error' },
     )
   }
-  if (response.status === 403) {
-    throw new OAuthError(
-      'insufficient_scope',
-      'The registered client needs the me:read scope.',
-      undefined,
-      { failureReason: 'http_error', httpStatus: response.status },
-    )
-  }
-  if (!response.ok)
+  if (!hasRequiredProfileFields(body)) {
     throw new OAuthError(
       'resource_failure',
       'Lunch Money rejected the /v2/me request.',
       undefined,
-      { failureReason: 'http_error', httpStatus: response.status },
-    )
-
-  let body: unknown
-  try {
-    body = await response.json()
-  } catch (cause) {
-    throw new OAuthError(
-      'resource_failure',
-      'Lunch Money /v2/me returned an invalid response.',
-      cause,
-      { failureReason: 'invalid_json', httpStatus: response.status },
+      {
+        failureReason: 'invalid_response',
+        ...(response === undefined ? {} : { httpStatus: response.status }),
+      },
     )
   }
-  const profile = lunchMoneyProfileSchema.safeParse(body)
-  if (!profile.success) {
-    throw new OAuthError(
-      'resource_failure',
-      'Lunch Money /v2/me returned an invalid response.',
-      undefined,
-      { failureReason: 'schema_mismatch', httpStatus: response.status },
-    )
-  }
-  return profile.data
+  return body
 }
 
 /**
  * Called when the connected application user chooses **Call /v2/me**. Loads
- * that user's server-held access token, calls Lunch Money, and returns a
- * validated profile without exposing the token. Throws safe errors when no
- * connection exists, `me:read` is missing, the response is malformed, or the
- * request fails.
+ * that user's server-held access token, calls Lunch Money through the official
+ * SDK, and returns its profile without exposing the token. It reports a safe
+ * error when no connection exists, `me:read` is missing, the response is
+ * incomplete, or the request fails.
  */
 export async function readLunchMoneyProfile(
   store: CredentialStore,

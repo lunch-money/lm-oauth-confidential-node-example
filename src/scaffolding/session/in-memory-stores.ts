@@ -43,10 +43,11 @@ export class InMemoryAuthorizationAttemptStore implements AuthorizationAttemptSt
 }
 
 /**
- * Demonstration-only credential store. It illustrates the ownership API but is
- * neither durable, encrypted, horizontally shared, nor a production tenant
- * boundary. Real applications must supply all of those properties plus key
- * management and lifecycle cleanup.
+ * Demonstration-only credential store. It shows how every stored credential is
+ * associated with an application user and Lunch Money connection. It loses all
+ * data on restart, stores values without encryption, and cannot share data with
+ * another server process. A production application must address those limits,
+ * manage encryption keys, and remove credentials when access ends.
  */
 export class InMemoryCredentialStore implements CredentialStore {
   private readonly values = new Map<string, LunchMoneyConnection>()
@@ -93,9 +94,10 @@ export class InMemoryCredentialStore implements CredentialStore {
 }
 
 /**
- * Demonstration-only process-local refresh exclusion. It rejects overlapping
- * work for one owner/connection while allowing independent connections to run.
- * It is not a distributed lock and does not survive a restart.
+ * Demonstration-only refresh coordinator. It prevents two requests in this
+ * Node.js process from using the same connection's refresh token at once while
+ * allowing different connections to refresh independently. Other server
+ * processes cannot see this coordination, and a restart clears it.
  */
 export class InMemoryRefreshCoordinator implements RefreshCoordinator {
   private readonly active = new Set<string>()

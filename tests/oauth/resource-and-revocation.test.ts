@@ -55,14 +55,11 @@ describe('/v2/me and revocation', () => {
     )
     expect(profile).toEqual(userProfile)
     expect(JSON.stringify(profile)).not.toContain('private-token')
-    expect(fetcher).toHaveBeenCalledWith(
-      new URL('https://issuer.example/v2/me'),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer private-token',
-        }),
-      }),
-    )
+    const request = fetcher.mock.lastCall?.[0]
+    expect(request).toBeInstanceOf(Request)
+    if (!(request instanceof Request)) throw new Error('Expected SDK request.')
+    expect(request.url).toBe('https://issuer.example/v2/me')
+    expect(request.headers.get('authorization')).toBe('Bearer private-token')
   })
 
   it('reports missing me:read without returning the upstream body', async () => {
@@ -123,7 +120,7 @@ describe('/v2/me and revocation', () => {
     })
   })
 
-  it('rejects successful responses with fields outside the documented user schema', async () => {
+  it('returns the SDK profile without rejecting additive response properties', async () => {
     const store = new InMemoryCredentialStore()
     await seed(store, {
       accessToken: 'token',
@@ -140,11 +137,44 @@ describe('/v2/me and revocation', () => {
             Response.json({ ...userProfile, unexpected: 'not in userObject' }),
           ),
       ),
-    ).rejects.toMatchObject({
-      code: 'resource_failure',
-      diagnostic: { failureReason: 'schema_mismatch', httpStatus: 200 },
+    ).resolves.toEqual({
+      ...userProfile,
+      unexpected: 'not in userObject',
     })
   })
+
+  it.each([
+    'name',
+    'email',
+    'id',
+    'account_id',
+    'budget_name',
+    'primary_currency',
+    'api_key_label',
+  ] as const)(
+    'treats a successful response missing %s like a rejected API request',
+    async (missingField) => {
+      const incompleteProfile = Object.fromEntries(
+        Object.entries(userProfile).filter(([field]) => field !== missingField),
+      )
+      await expect(
+        identifyLunchMoneyConnection(
+          { accessToken: 'private-token', scope: 'me:read' },
+          new URL('https://issuer.example/v2/me'),
+          vi
+            .fn<typeof fetch>()
+            .mockResolvedValue(Response.json(incompleteProfile)),
+        ),
+      ).rejects.toMatchObject({
+        code: 'resource_failure',
+        message: 'Lunch Money rejected the /v2/me request.',
+        diagnostic: {
+          failureReason: 'invalid_response',
+          httpStatus: 200,
+        },
+      })
+    },
+  )
 
   it('revokes, verifies the old token fails, and then deletes local credentials', async () => {
     const store = new InMemoryCredentialStore()

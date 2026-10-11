@@ -51,7 +51,7 @@ export async function completeAuthorization(
       'The OAuth callback could not be verified.',
     )
   }
-  // Security invariant: a callback must return to the same opaque application session that initiated the redirect.
+  // Security invariant: a callback must return to the same random server-side browser session that started the redirect.
   if (attempt.applicationSessionId !== applicationSessionId) {
     throw new OAuthError(
       'callback_invalid',
@@ -85,7 +85,7 @@ export async function completeAuthorization(
     )
   }
 
-  // Security invariant: only the validated resource response decides which budgeting account owns the credentials.
+  // Use the complete /v2/me response—not a browser or callback value—to decide which budget owns the credentials.
   const profile = await identifyLunchMoneyConnection(
     tokenSet,
     meEndpoint,

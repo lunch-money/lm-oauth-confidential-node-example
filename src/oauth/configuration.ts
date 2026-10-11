@@ -28,7 +28,7 @@ function convertTokenResponse(
   }
 }
 
-/** Configuration needed by the framework-independent OAuth workflow. */
+/** Lunch Money OAuth settings used by the code in `src/oauth`. */
 export interface OAuthConfiguration {
   readonly issuer: URL
   readonly clientId: string
@@ -41,9 +41,9 @@ export interface OAuthConfiguration {
  * Called during server startup to discover Lunch Money's OAuth endpoints and
  * configure the `openid-client` operations used by the sample. The library
  * validates discovery metadata, callback state, authorization responses, and
- * token responses. The application still authenticates its users, saves pending
- * attempts and credentials, configures the exact redirect URI, presents safe
- * errors, and removes data when a connection or application account ends.
+ * token responses. The application still signs in its own users, remembers who
+ * started each authorization, saves credentials, configures the exact redirect
+ * URI, presents safe errors, and removes data when access ends.
  */
 export async function createOpenIdClient(
   configuration: OAuthConfiguration,
@@ -80,7 +80,7 @@ export async function createOpenIdClient(
         state,
         code_challenge: codeChallenge,
         code_challenge_method: 'S256',
-        // Lunch Money applies the client's immutable registered scopes. Do not add `scope` here.
+        // Lunch Money applies the scopes chosen when the client was registered; those scopes cannot be changed during authorization. Do not add `scope` here.
       })
       return { state, codeVerifier, url }
     },

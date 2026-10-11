@@ -2,7 +2,7 @@
 
 This repository is a focused reference for developers building a **confidential, server-side web client** in Node.js and TypeScript. It demonstrates one walkthrough end to end: register a Lunch Money OAuth client, authorize it with state and S256 PKCE, call `GET /v2/me`, optionally rotate tokens, revoke access, verify that the old access token fails, and reset the local demonstration.
 
-The browser never receives the client secret, PKCE verifier, authorization code exchange, access token, or refresh token. Register `me:read` for the minimal path; optionally register `offline_access` at the same time to enable the refresh step. [`openid-client`](https://github.com/panva/openid-client) is the recommended and supported third-party Node.js library for working with Lunch Money's OAuth interfaces; its [API reference](https://github.com/panva/openid-client/blob/main/docs/README.md) documents the library itself. The small integration developers should study is in [`src/oauth/`](src/oauth/README.md); Hono and the interface are replaceable scaffolding.
+The browser never receives the client secret, PKCE verifier, authorization code exchange, access token, or refresh token. Register `me:read` for the minimal path; optionally register `offline_access` at the same time to enable the refresh step. [`openid-client`](https://github.com/panva/openid-client) handles the OAuth protocol, and the official [`@lunch-money/lunch-money-js-v2`](https://github.com/lunch-money/lunch-money-js-v2) SDK makes the authenticated `/v2/me` API call. The small integration developers should study is in [`src/oauth/`](src/oauth/README.md); Hono and the interface are replaceable scaffolding.
 
 > This is a teaching sample, not a production-ready application. Its fixed demo user and in-memory stores provide neither real authentication nor durable multi-user isolation. It does demonstrate browser-session binding, finite one-time attempts, and CSRF-protected forms.
 
@@ -56,11 +56,11 @@ Do not commit `.env`. Git already ignores it. Keep the client secret out of scre
 
 ## How credentials stay with the right application user
 
-Before redirecting to Lunch Money, an application must remember which signed-in application user started authorization and which browser session made the request. When Lunch Money redirects back, the callback must match both saved values. After exchange, validated `/v2/me` values identify the Lunch Money user and budget. The application stores credentials under `(applicationUserId, lunchMoneyUserId, accountId)`; callback parameters and form fields never decide who owns them.
+Before redirecting to Lunch Money, an application must remember which signed-in application user started authorization and which browser session made the request. When Lunch Money redirects back, the callback must match both saved values. After exchange, a complete `/v2/me` response identifies the Lunch Money user and budget. The application stores credentials under `(applicationUserId, lunchMoneyUserId, accountId)`; callback parameters and form fields never decide who owns them.
 
 The sample represents its one application user as `local-demo-user`. A real application replaces it with an application-specific ID obtained from its authenticated server-side session. That ID should not be an email address or other personally identifiable information.
 
-Each authorization attempt works once and expires after five minutes. That duration is a choice made by this sample, not a Lunch Money token lifetime. The [`CredentialStore`](src/oauth/tokens.ts) shows where an application supplies secure credential storage. The included implementation keeps everything in memory; production applications need encrypted durable storage, strict separation between users, safe key management, reliable complete-token updates, and lifecycle cleanup.
+Each authorization attempt works once and expires after five minutes. That duration is a choice made by this sample, not a Lunch Money token lifetime. The [`CredentialStore`](src/oauth/tokens.ts) shows where an application supplies secure credential storage. The included implementation keeps everything in memory. A production application must encrypt saved credentials, keep each user's credentials separate, replace all values from a token response together, and remove credentials when access ends.
 
 ## What `openid-client` does—and does not do
 
@@ -77,16 +77,16 @@ Read [`src/oauth/README.md`](src/oauth/README.md), then these files in order:
 3. [`authorization.ts`](src/oauth/authorization.ts) — state/PKCE start, finite lifetime, and user/session binding.
 4. [`callback.ts`](src/oauth/callback.ts) — one-time callback consumption, user/session validation, code exchange, and credential ownership.
 5. [`tokens.ts`](src/oauth/tokens.ts) — the replaceable `CredentialStore` boundary.
-6. [`lunch-money-api.ts`](src/oauth/lunch-money-api.ts) — the server-side `/v2/me` request.
-7. [`refresh.ts`](src/oauth/refresh.ts) — per-connection refresh, atomic rotation persistence, and recovery.
-8. [`revocation.ts`](src/oauth/revocation.ts) — grant-aware revoke, verify, then delete.
+6. [`lunch-money-api.ts`](src/oauth/lunch-money-api.ts) — the official SDK's server-side `/v2/me` request and defensive handling for incomplete responses.
+7. [`refresh.ts`](src/oauth/refresh.ts) — refreshing one connection at a time and saving every replacement value together.
+8. [`revocation.ts`](src/oauth/revocation.ts) — revoking access, confirming the old token fails, and then deleting local credentials.
 9. [`errors.ts`](src/oauth/errors.ts) — safe browser and log errors.
 
 The executable documentation is in [`tests/oauth/`](tests/oauth/). Framework, cookies, sessions, pages, and startup live in [`src/scaffolding/`](src/scaffolding/README.md).
 
 ## Non-goals and intentionally omitted behavior
 
-There is no native/Expo flow, backend-assisted mobile handoff, generic API explorer, production deployment recipe, application login, persistent database, background refresh scheduler, or token logger. Refresh is an optional step in the same walkthrough, not a second application. The in-memory store and coordinator demonstrate the safety contract but are not durable, encrypted, transactional, distributed, restart-safe, multi-instance-safe, or a production tenant boundary.
+There is no native/Expo flow, backend-assisted mobile handoff, generic API explorer, production deployment recipe, application login, persistent database, background refresh scheduler, or token logger. Refresh is an optional step in the same walkthrough, not a second application. The in-memory store loses everything on restart, does not encrypt credentials, and is not shared by multiple server processes. Replace it before using this code in production.
 
 ## Validation and production adaptation
 

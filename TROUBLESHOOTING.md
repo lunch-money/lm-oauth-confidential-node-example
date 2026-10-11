@@ -58,4 +58,4 @@ The sample intentionally retains the local credential and reports that verificat
 
 ## Restart cleared the connection
 
-Expected: all stores are in memory. Production needs durable encrypted credentials, shared attempt/session state, tenant isolation, key management, and lifecycle cleanup.
+Expected: all stores are in memory. A production application must encrypt saved credentials, keep each user's data separate, share session and authorization-attempt data across its server processes, manage encryption keys, and remove data when it is no longer needed.

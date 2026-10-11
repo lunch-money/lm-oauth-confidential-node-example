@@ -219,7 +219,7 @@ describe('refresh orchestration', () => {
     ).resolves.toMatchObject({ credentials: offlineCredentials })
   })
 
-  it('keeps the storage boundary as one complete replacement operation', async () => {
+  it('saves every replacement credential in one operation', async () => {
     const values = new Map<
       string,
       import('../../src/oauth/index.js').LunchMoneyConnection

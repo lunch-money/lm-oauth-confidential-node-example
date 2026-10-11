@@ -47,8 +47,8 @@ export interface ApplicationConfiguration {
  * environment-specific client registration. The client secret and session
  * secret must never be exposed to the browser or logs. This validates those
  * settings and returns the typed server, OAuth, and `/v2/me` configuration used
- * by the sample. For local convenience only, an omitted session secret is
- * generated in memory.
+ * by the sample. For local use, the sample can generate a new session-signing
+ * secret when it starts.
  */
 export function loadConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
@@ -75,9 +75,9 @@ export function loadConfiguration(
 }
 
 /**
- * Call when startup validation fails to produce a safe operator-facing
- * message. It returns setting names and requirements, never rejected values,
- * client secrets, or session secrets.
+ * Turns a startup configuration error into a message a developer can act on.
+ * It names the settings that need attention without returning their submitted
+ * values, the OAuth client secret, or the session-signing secret.
  */
 export function safeConfigurationError(error: unknown): string {
   if (!(error instanceof ZodError))

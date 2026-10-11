@@ -160,7 +160,7 @@ describe('OAuth callback', () => {
     })
   })
 
-  it('wraps token and PKCE failures in a redacted domain error', async () => {
+  it('turns token and PKCE failures into errors that are safe to show', async () => {
     const attempts = new InMemoryAuthorizationAttemptStore()
     await attempts.save(attempt)
     const protocol = new FakeProtocolClient()

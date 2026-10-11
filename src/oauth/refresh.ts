@@ -103,8 +103,8 @@ export async function refreshConnection(
     }
 
     try {
-      // Security invariant: access token, rotated refresh token, expiration, and
-      // scope metadata cross the storage boundary as one complete value.
+      // Security invariant: save the new access token, replacement refresh
+      // token, expiration, and scopes together so they cannot get out of sync.
       await store.upsert(owner.applicationUserId, {
         ...current,
         credentials: replacement,

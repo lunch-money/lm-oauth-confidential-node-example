@@ -70,8 +70,8 @@ export interface AppDependencies {
 }
 
 /**
- * Call during server startup to connect HTTP requests to the framework-neutral
- * OAuth teaching functions. Routes use a fixed demo identity so the sample can
+ * Call during server startup to connect the browser routes to the OAuth code in
+ * `src/oauth`. Routes use a fixed demo identity so the sample can
  * run without an application login. A real application must replace it with the
  * user ID from its authenticated server session before storing, reading,
  * refreshing, revoking, or deleting that user's credentials.
@@ -175,7 +175,7 @@ export function createApp(
     }
     try {
       collapseAuthorizationProcessing(session.value)
-      // The Connect form starts OAuth for the user and browser session established by the server above.
+      // Clicking Connect starts OAuth for the user and browser session already known to this server.
       const url = await startAuthorization(protocol, attempts, {
         applicationUserId: DEMO_APPLICATION_USER_ID,
         applicationSessionId: session.id,
@@ -201,7 +201,7 @@ export function createApp(
       const connectionsBeforeAuthorization = await credentials.list(
         DEMO_APPLICATION_USER_ID,
       )
-      // Lunch Money returns here; completeAuthorization checks the saved attempt before storing credentials for its owner.
+      // Lunch Money returns here. completeAuthorization checks that this user and browser started the saved attempt before it stores credentials.
       const connected = await completeAuthorization(
         protocol,
         attempts,
@@ -329,7 +329,7 @@ export function createApp(
     }
     collapseAuthorizationProcessing(session.value)
     try {
-      // The profile button makes a server-side API call with credentials stored for this application user.
+      // Clicking Call /v2/me uses this application user's stored credential on the server; the browser never receives the token.
       session.value.profile = await readLunchMoneyProfile(
         credentials,
         {
@@ -360,7 +360,7 @@ export function createApp(
     }
     try {
       collapseAuthorizationProcessing(session.value)
-      // The refresh button asks the teaching workflow to replace this connection's credential set safely.
+      // Clicking Refresh uses the saved refresh token and stores every replacement credential together.
       session.value.refresh = await refreshConnection(
         protocol,
         credentials,
@@ -375,7 +375,7 @@ export function createApp(
       )
       session.value.message =
         session.value.refresh.status === 'refreshed'
-          ? 'Lunch Money rotated the access and refresh credentials. The replacement set was stored atomically.'
+          ? 'Lunch Money replaced the access and refresh credentials. All replacement values were stored together.'
           : session.value.refresh.status === 'refresh_not_available'
             ? 'Refresh is unavailable. Register a replacement client with offline_access and authorize it.'
             : session.value.refresh.status === 'refresh_in_progress'

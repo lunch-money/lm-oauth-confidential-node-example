@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server'
 import type { Hono } from 'hono'
 
-/** Starts the incidental Node HTTP server around the framework-independent OAuth core. */
+/** Starts the Node HTTP server that makes the OAuth example runnable in a browser. */
 export function startServer(app: Hono, port: number): void {
   serve({ fetch: app.fetch, port }, (info) => {
     console.log(

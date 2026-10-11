@@ -192,7 +192,7 @@ describe('Hono scaffolding', () => {
     expect(protocol.exchanged).toBeUndefined()
   })
 
-  it('never returns credentials in browser HTML and clears the authorization explanation after /v2/me', async () => {
+  it('never returns credentials in browser HTML and collapses the authorization explanation after /v2/me', async () => {
     const protocol = new FakeProtocolClient()
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       Response.json({
@@ -203,6 +203,7 @@ describe('Hono scaffolding', () => {
         budget_name: 'Demo budget',
         primary_currency: 'usd',
         api_key_label: null,
+        server_only_addition: 'must not be displayed',
       }),
     )
     const app = createApp(configuration, protocol, { fetcher })
@@ -237,6 +238,8 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('private-code')
     expect(html).not.toContain('server-only-verifier')
     expect(html).not.toContain(configuration.oauth.clientSecret)
+    expect(html).not.toContain('server_only_addition')
+    expect(html).not.toContain('must not be displayed')
     expect(html).toContain('How this authorization was processed')
     expect(html).toContain('<details class="teaching-panel">')
     expect(html).not.toContain('<details class="teaching-panel" open>')
@@ -379,14 +382,11 @@ describe('Hono scaffolding', () => {
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
     expect(html).toContain('value="84" selected')
-    expect(fetcher).toHaveBeenLastCalledWith(
-      configuration.oauth.meEndpoint,
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer budget-a-token',
-        }),
-      }),
-    )
+    const request = fetcher.mock.lastCall?.[0]
+    expect(request).toBeInstanceOf(Request)
+    if (!(request instanceof Request)) throw new Error('Expected SDK request.')
+    expect(request.url).toBe(configuration.oauth.meEndpoint.href)
+    expect(request.headers.get('authorization')).toBe('Bearer budget-a-token')
   })
 
   it('rejects selection of a budget not owned by the application user', async () => {

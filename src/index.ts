@@ -24,7 +24,7 @@ async function start(): Promise<void> {
     protocol = await createOpenIdClient(configuration.oauth)
   } catch {
     // Security invariant: do not print discovery responses, which may contain
-    // upstream implementation details that do not belong in shared logs.
+    // details returned by the authorization server that do not belong in shared logs.
     console.error(
       'Startup failed: OAuth discovery failed. Check LUNCH_MONEY_API_BASE_URL and confirm that its origin exposes /.well-known/oauth-authorization-server.',
     )

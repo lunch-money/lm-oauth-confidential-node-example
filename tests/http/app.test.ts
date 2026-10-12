@@ -129,7 +129,13 @@ describe('Hono scaffolding', () => {
         new Response('private upstream details', { status: 401 }),
       )
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const app = createApp(configuration, new FakeProtocolClient(), { fetcher })
+    const protocol = new FakeProtocolClient()
+    protocol.credentials = {
+      accessToken: 'server-access-token',
+      refreshToken: 'server-refresh-token',
+      scope: 'me:read offline_access',
+    }
+    const app = createApp(configuration, protocol, { fetcher })
     const session = await openSession(app)
 
     await app.request(
@@ -172,6 +178,7 @@ describe('Hono scaffolding', () => {
     expect(errorLog.mock.lastCall?.[0]).not.toContain(
       'private upstream details',
     )
+    expect(protocol.refreshed).toHaveLength(0)
     errorLog.mockRestore()
   })
 
@@ -243,6 +250,155 @@ describe('Hono scaffolding', () => {
     expect(html).toContain('How this authorization was processed')
     expect(html).toContain('<details class="teaching-panel">')
     expect(html).not.toContain('<details class="teaching-panel" open>')
+  })
+
+  it('hides the previous profile and budget selection when /v2/me rejects the saved credential', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+      .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const app = createApp(configuration, new FakeProtocolClient(), { fetcher })
+    const session = await openSession(app)
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=code&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    const successfulHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(successfulHtml).toContain('Demo budget')
+    expect(successfulHtml).toContain('&quot;account_id&quot;: 84')
+
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    const rejectedHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+
+    expect(rejectedHtml).toContain(
+      '<p class="notice">Lunch Money rejected /v2/me with HTTP 401. This connection cannot be refreshed, so authorize it again.</p>',
+    )
+    expect(rejectedHtml).toContain('No Lunch Money budget is connected.')
+    expect(rejectedHtml).toContain(
+      'No profile has been loaded in this browser session.',
+    )
+    expect(rejectedHtml).not.toContain('<h2>Active budget</h2>')
+    expect(rejectedHtml).not.toContain('<select aria-label="Active budget"')
+    expect(rejectedHtml).not.toContain('&quot;account_id&quot;: 84')
+    expect(rejectedHtml).not.toContain('Call /v2/me')
+    expect(rejectedHtml).toContain('How this authorization was processed')
+    expect(rejectedHtml).toContain('<details class="teaching-panel">')
+  })
+
+  it('keeps another budget available when /v2/me rejects the active budget', async () => {
+    const credentials = new InMemoryCredentialStore()
+    for (const [accountId, budgetName] of [
+      [84, 'Household'],
+      [91, 'API testing'],
+    ] as const) {
+      await credentials.upsert('local-demo-user' as ApplicationUserId, {
+        accountId: accountId as AccountId,
+        budgetName,
+        credentials: {
+          accessToken: `${accountId}-token`,
+          scope: 'me:read',
+        },
+        lunchMoneyUserId: 42,
+      })
+    }
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(91, 'API testing')))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const app = createApp(configuration, new FakeProtocolClient(), {
+      credentials,
+      fetcher,
+    })
+    const session = await openSession(app)
+    await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '91' }),
+    )
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    expect(
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 91 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
+    ).toBeUndefined()
+    expect(
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 84 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
+    ).toBeDefined()
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain(
+      '<p class="notice">Lunch Money rejected /v2/me with HTTP 401. This connection cannot be refreshed, so authorize it again.</p>',
+    )
+    expect(html).toContain('Household')
+    expect(html).not.toContain('API testing')
+    expect(html).not.toContain('&quot;account_id&quot;: 91')
+    expect(html).toContain('Call /v2/me')
+  })
+
+  it('keeps a refreshable connection and explains the next step after /v2/me returns 401', async () => {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 84 as AccountId,
+      budgetName: 'Demo budget',
+      credentials: {
+        accessToken: 'expired-access-token',
+        refreshToken: 'current-refresh-token',
+        scope: 'me:read offline_access',
+      },
+      lunchMoneyUserId: 42,
+    })
+    const protocol = new FakeProtocolClient()
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const app = createApp(configuration, protocol, { credentials, fetcher })
+    const session = await openSession(app)
+
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    expect(protocol.refreshed).toHaveLength(0)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(
+      (
+        await credentials.get('local-demo-user' as ApplicationUserId, {
+          accountId: 84 as AccountId,
+          lunchMoneyUserId: 42,
+        })
+      )?.credentials,
+    ).toEqual({
+      accessToken: 'expired-access-token',
+      refreshToken: 'current-refresh-token',
+      scope: 'me:read offline_access',
+    })
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain(
+      'Lunch Money rejected /v2/me with HTTP 401. The access token may have expired or been revoked. Use Refresh access token, then call /v2/me again.',
+    )
+    expect(html).not.toContain('&quot;account_id&quot;: 84')
+    expect(html).toContain('Demo budget')
+    expect(html).toContain('action="/refresh"')
   })
 
   it.each(['/revoke', '/reset'])(

@@ -119,7 +119,7 @@ Open Lunch Money's [Connected Apps](https://my.lunchmoney.app/connected-apps) pa
 
 ## 6. Optionally refresh access
 
-If you registered the client with `offline_access`, choose **Refresh access token**, then choose **Call /v2/me** again.
+If you registered the client with `offline_access`, choose **Refresh access token**, then choose **Call /v2/me** again. The separate refresh button makes token replacement visible while learning the flow. If **Call /v2/me** receives `401`, the sample keeps a connection that has a refresh token and directs you to refresh explicitly before trying `/v2/me` again. It does not refresh automatically or during the OAuth callback.
 
 Lunch Money replaces both the access token and refresh token after a successful refresh. The sample stores the complete replacement credential set on the server before reporting success. Calling `/v2/me` again confirms that it is using the replacement access token.
 

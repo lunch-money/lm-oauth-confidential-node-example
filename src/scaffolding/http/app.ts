@@ -91,6 +91,35 @@ export function createApp(
     dependencies.refreshCoordinator ?? new InMemoryRefreshCoordinator()
   const fetcher = dependencies.fetcher ?? fetch
 
+  async function selectFallbackConnection(
+    session: BrowserSession,
+    excluded?: ConnectionIdentity,
+  ): Promise<void> {
+    const fallback = sortedConnections(
+      await credentials.list(DEMO_APPLICATION_USER_ID),
+    ).find(
+      (connection) =>
+        connection.lunchMoneyUserId === session.activeLunchMoneyUserId &&
+        (excluded === undefined ||
+          connection.accountId !== excluded.accountId ||
+          connection.lunchMoneyUserId !== excluded.lunchMoneyUserId),
+    )
+    if (fallback) session.activeAccountId = fallback.accountId
+    else delete session.activeAccountId
+  }
+
+  async function removeRejectedConnection(
+    session: BrowserSession,
+    identity: ConnectionIdentity,
+  ): Promise<void> {
+    await deleteCredentials(credentials, DEMO_APPLICATION_USER_ID, identity)
+    refreshCoordinator.clearReauthorizationRequired({
+      applicationUserId: DEMO_APPLICATION_USER_ID,
+      ...identity,
+    })
+    await selectFallbackConnection(session, identity)
+  }
+
   app.use('*', async (context, next) => {
     context.header('Cache-Control', 'no-store')
     context.header('Referrer-Policy', 'no-referrer')
@@ -328,23 +357,55 @@ export function createApp(
       return context.text(INVALID_CSRF_MESSAGE, 403)
     }
     collapseAuthorizationProcessing(session.value)
+    delete session.value.profile
+    delete session.value.refresh
+    delete session.value.revocation
+    let identity: ConnectionIdentity | undefined
     try {
+      identity = requireActiveConnectionIdentity(
+        session.value.activeAccountId,
+        session.value.activeLunchMoneyUserId,
+      )
       // Clicking Call /v2/me uses this application user's stored credential on the server; the browser never receives the token.
       session.value.profile = await readLunchMoneyProfile(
         credentials,
         {
           applicationUserId: DEMO_APPLICATION_USER_ID,
-          ...requireActiveConnectionIdentity(
-            session.value.activeAccountId,
-            session.value.activeLunchMoneyUserId,
-          ),
+          ...identity,
         },
         configuration.oauth.meEndpoint,
         fetcher,
       )
       session.value.message = 'Lunch Money returned /v2/me successfully.'
     } catch (error) {
-      session.value.message = publicErrorMessage(error)
+      // Never leave an older successful response on screen after a failed call.
+      delete session.value.profile
+      if (
+        identity !== undefined &&
+        safeOAuthErrorDiagnostic(error).httpStatus === 401
+      ) {
+        const connection = await credentials.get(
+          DEMO_APPLICATION_USER_ID,
+          identity,
+        )
+        if (connection?.credentials.refreshToken) {
+          // Keep the connection so the developer can observe refresh as a
+          // separate action before manually trying /v2/me again.
+          session.value.message =
+            'Lunch Money rejected /v2/me with HTTP 401. The access token may have expired or been revoked. Use Refresh access token, then call /v2/me again.'
+        } else {
+          // Without a refresh token this credential has no recovery path.
+          // Remove only this connection and keep the user's other budgets.
+          if (connection) {
+            await removeRejectedConnection(session.value, identity)
+          }
+          session.value.message =
+            'Lunch Money rejected /v2/me with HTTP 401. This connection cannot be refreshed, so authorize it again.'
+        }
+      } else {
+        session.value.message = publicErrorMessage(error)
+      }
+      delete session.value.hideStoredConnections
     }
     return context.redirect('/')
   })

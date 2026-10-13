@@ -28,14 +28,16 @@ export async function revokeAndVerify(
     )
 
   try {
-    // Security invariant: revoking a refresh token revokes the Lunch Money grant;
-    // access-only connections retain the narrower access-token behavior.
+    // When a refresh token exists, revoke it to end the whole Lunch Money grant.
+    // Revoke the access token only for a connection that has no refresh token,
+    // or the broader grant could remain usable.
     await protocol.revoke(
       credentials.credentials.refreshToken ??
         credentials.credentials.accessToken,
       credentials.credentials.refreshToken ? 'refresh_token' : 'access_token',
     )
-    // Security invariant: verification uses the just-revoked server-held value and never exposes it to the browser.
+    // After revocation, call /v2/me with the old server-held access token to
+    // confirm rejection without exposing that token to the browser.
     const verification = await fetcher(meEndpoint, {
       headers: {
         Accept: 'application/json',
@@ -49,7 +51,8 @@ export async function revokeAndVerify(
         'Revocation was requested, but the old credential was not rejected.',
       )
     }
-    // Security invariant: remove only the authenticated owner's local credential after verified revocation.
+    // Delete only this authenticated user's matching connection after Lunch
+    // Money rejects the old token so another user's credentials remain intact.
     await store.delete(owner.applicationUserId, owner)
     return { revoked: true, oldCredentialRejected: true }
   } catch (cause) {

@@ -85,13 +85,23 @@ describe('Hono scaffolding', () => {
   ])('rejects missing and incorrect CSRF tokens on POST %s', async (route) => {
     const app = createApp(configuration, new FakeProtocolClient())
     const session = await openSession(app)
-    expect((await app.request(route, formRequest(session.cookie))).status).toBe(
-      403,
+    const missingTokenResponse = await app.request(
+      route,
+      formRequest(session.cookie),
     )
-    expect(
-      (await app.request(route, formRequest(session.cookie, 'incorrect-token')))
-        .status,
-    ).toBe(403)
+    expect(missingTokenResponse.status).toBe(403)
+    expect(await missingTokenResponse.text()).toBe(
+      'Invalid CSRF token. Go back, reload the page, and try again.',
+    )
+
+    const incorrectTokenResponse = await app.request(
+      route,
+      formRequest(session.cookie, 'incorrect-token'),
+    )
+    expect(incorrectTokenResponse.status).toBe(403)
+    expect(await incorrectTokenResponse.text()).toBe(
+      'Invalid CSRF token. Go back, reload the page, and try again.',
+    )
   })
 
   it('does not require a form CSRF token on the OAuth callback GET', async () => {
@@ -108,6 +118,68 @@ describe('Hono scaffolding', () => {
     )
     expect(callback.status).toBe(302)
     expect(protocol.exchanged).toBeDefined()
+  })
+
+  it('hides the previous user after a new authorization fails during /v2/me and logs only safe diagnostics', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Previous budget')))
+      .mockResolvedValueOnce(Response.json(profile(84, 'Previous budget')))
+      .mockResolvedValueOnce(
+        new Response('private upstream details', { status: 401 }),
+      )
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const protocol = new FakeProtocolClient()
+    protocol.credentials = {
+      accessToken: 'server-access-token',
+      refreshToken: 'server-refresh-token',
+      scope: 'me:read offline_access',
+    }
+    const app = createApp(configuration, protocol, { fetcher })
+    const session = await openSession(app)
+
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=first&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=second&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain(
+      '<p class="notice">Lunch Money rejected the /v2/me request.</p>',
+    )
+    expect(html).toContain('No Lunch Money budget is connected.')
+    expect(html).toContain('Connect Lunch Money')
+    expect(html).not.toContain('Previous budget')
+    expect(html).not.toContain('<h2>GET /v2/me</h2>')
+    expect(html).not.toContain('Call /v2/me')
+    expect(html).not.toContain('How this authorization was processed')
+    expect(errorLog).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        event: 'oauth.callback.failed',
+        errorCode: 'resource_failure',
+        failureReason: 'http_error',
+        httpStatus: 401,
+      }),
+    )
+    expect(errorLog.mock.lastCall?.[0]).not.toContain(
+      'private upstream details',
+    )
+    expect(protocol.refreshed).toHaveLength(0)
+    errorLog.mockRestore()
   })
 
   it('rejects a callback in a different browser session even for the fixed demo user', async () => {
@@ -127,7 +199,7 @@ describe('Hono scaffolding', () => {
     expect(protocol.exchanged).toBeUndefined()
   })
 
-  it('never returns credentials in browser HTML after callback and /v2/me', async () => {
+  it('never returns credentials in browser HTML and collapses the authorization explanation after /v2/me', async () => {
     const protocol = new FakeProtocolClient()
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       Response.json({
@@ -138,6 +210,7 @@ describe('Hono scaffolding', () => {
         budget_name: 'Demo budget',
         primary_currency: 'usd',
         api_key_label: null,
+        server_only_addition: 'must not be displayed',
       }),
     )
     const app = createApp(configuration, protocol, { fetcher })
@@ -150,6 +223,19 @@ describe('Hono scaffolding', () => {
       '/oauth/callback?code=private-code&state=generated-state',
       { headers: { cookie: session.cookie } },
     )
+    const callbackHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(callbackHtml).toContain('How this authorization was processed')
+    expect(callbackHtml).toContain('<details class="teaching-panel" open>')
+    expect(callbackHtml).toContain('Inspect the credential response locally')
+    expect(callbackHtml).toContain('exchangeCallback()')
+    expect(callbackHtml).toContain('accessToken: string')
+    expect(callbackHtml).not.toMatch(/github\.com[^"']+#L\d+/)
+    expect(
+      callbackHtml.match(/target="_blank" rel="noopener noreferrer"/g),
+    ).toHaveLength(4)
+
     await app.request('/me', formRequest(session.cookie, session.csrfToken))
     const html = await (
       await app.request('/', { headers: { cookie: session.cookie } })
@@ -159,18 +245,164 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('private-code')
     expect(html).not.toContain('server-only-verifier')
     expect(html).not.toContain(configuration.oauth.clientSecret)
+    expect(html).not.toContain('server_only_addition')
+    expect(html).not.toContain('must not be displayed')
     expect(html).toContain('How this authorization was processed')
-    expect(html).toContain('Inspect the credential response locally')
-    expect(html).toContain('exchangeCallback()')
-    expect(html).toContain('accessToken: string')
-    expect(html).not.toMatch(/github\.com[^"']+#L\d+/)
+    expect(html).toContain('<details class="teaching-panel">')
+    expect(html).not.toContain('<details class="teaching-panel" open>')
+  })
+
+  it('hides the previous profile and budget selection when /v2/me rejects the saved credential', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+      .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const app = createApp(configuration, new FakeProtocolClient(), { fetcher })
+    const session = await openSession(app)
+    await app.request(
+      '/oauth/start',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    await app.request('/oauth/callback?code=code&state=generated-state', {
+      headers: { cookie: session.cookie },
+    })
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    const successfulHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(successfulHtml).toContain('Demo budget')
+    expect(successfulHtml).toContain('&quot;account_id&quot;: 84')
+
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    const rejectedHtml = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+
+    expect(rejectedHtml).toContain(
+      '<p class="notice">Lunch Money rejected /v2/me with HTTP 401. This connection cannot be refreshed, so authorize it again.</p>',
+    )
+    expect(rejectedHtml).toContain('No Lunch Money budget is connected.')
+    expect(rejectedHtml).toContain(
+      'No profile has been loaded in this browser session.',
+    )
+    expect(rejectedHtml).not.toContain('<h2>Active budget</h2>')
+    expect(rejectedHtml).not.toContain('<select aria-label="Active budget"')
+    expect(rejectedHtml).not.toContain('&quot;account_id&quot;: 84')
+    expect(rejectedHtml).not.toContain('Call /v2/me')
+    expect(rejectedHtml).toContain('How this authorization was processed')
+    expect(rejectedHtml).toContain('<details class="teaching-panel">')
+  })
+
+  it('keeps another budget available when /v2/me rejects the active budget', async () => {
+    const credentials = new InMemoryCredentialStore()
+    for (const [accountId, budgetName] of [
+      [84, 'Household'],
+      [91, 'API testing'],
+    ] as const) {
+      await credentials.upsert('local-demo-user' as ApplicationUserId, {
+        accountId: accountId as AccountId,
+        budgetName,
+        credentials: {
+          accessToken: `${accountId}-token`,
+          scope: 'me:read',
+        },
+        lunchMoneyUserId: 42,
+      })
+    }
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(91, 'API testing')))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const app = createApp(configuration, new FakeProtocolClient(), {
+      credentials,
+      fetcher,
+    })
+    const session = await openSession(app)
+    await app.request(
+      '/connections/active',
+      formRequest(session.cookie, session.csrfToken, { account_id: '91' }),
+    )
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
     expect(
-      html.match(/target="_blank" rel="noopener noreferrer"/g),
-    ).toHaveLength(4)
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 91 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
+    ).toBeUndefined()
+    expect(
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 84 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
+    ).toBeDefined()
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain(
+      '<p class="notice">Lunch Money rejected /v2/me with HTTP 401. This connection cannot be refreshed, so authorize it again.</p>',
+    )
+    expect(html).toContain('Household')
+    expect(html).not.toContain('API testing')
+    expect(html).not.toContain('&quot;account_id&quot;: 91')
+    expect(html).toContain('Call /v2/me')
+  })
+
+  it('keeps a refreshable connection and explains the next step after /v2/me returns 401', async () => {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 84 as AccountId,
+      budgetName: 'Demo budget',
+      credentials: {
+        accessToken: 'expired-access-token',
+        refreshToken: 'current-refresh-token',
+        scope: 'me:read offline_access',
+      },
+      lunchMoneyUserId: 42,
+    })
+    const protocol = new FakeProtocolClient()
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json(profile(84, 'Demo budget')))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    const app = createApp(configuration, protocol, { credentials, fetcher })
+    const session = await openSession(app)
+
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+    await app.request('/me', formRequest(session.cookie, session.csrfToken))
+
+    expect(protocol.refreshed).toHaveLength(0)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(
+      (
+        await credentials.get('local-demo-user' as ApplicationUserId, {
+          accountId: 84 as AccountId,
+          lunchMoneyUserId: 42,
+        })
+      )?.credentials,
+    ).toEqual({
+      accessToken: 'expired-access-token',
+      refreshToken: 'current-refresh-token',
+      scope: 'me:read offline_access',
+    })
+
+    const html = await (
+      await app.request('/', { headers: { cookie: session.cookie } })
+    ).text()
+    expect(html).toContain(
+      'Lunch Money rejected /v2/me with HTTP 401. The access token may have expired or been revoked. Use Refresh access token, then call /v2/me again.',
+    )
+    expect(html).not.toContain('&quot;account_id&quot;: 84')
+    expect(html).toContain('Demo budget')
+    expect(html).toContain('action="/refresh"')
   })
 
   it.each(['/revoke', '/reset'])(
-    'clears the authorization explanation after POST %s',
+    'collapses the authorization explanation after POST %s',
     async (route) => {
       const fetcher = vi
         .fn<typeof fetch>()
@@ -191,14 +423,15 @@ describe('Hono scaffolding', () => {
         await (
           await app.request('/', { headers: { cookie: session.cookie } })
         ).text(),
-      ).toContain('How this authorization was processed')
+      ).toContain('<details class="teaching-panel" open>')
 
       await app.request(route, formRequest(session.cookie, session.csrfToken))
-      expect(
-        await (
-          await app.request('/', { headers: { cookie: session.cookie } })
-        ).text(),
-      ).not.toContain('How this authorization was processed')
+      const html = await (
+        await app.request('/', { headers: { cookie: session.cookie } })
+      ).text()
+      expect(html).toContain('How this authorization was processed')
+      expect(html).toContain('<details class="teaching-panel">')
+      expect(html).not.toContain('<details class="teaching-panel" open>')
     },
   )
 
@@ -297,21 +530,19 @@ describe('Hono scaffolding', () => {
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
     expect(html).toContain('No profile has been loaded')
-    expect(html).not.toContain('How this authorization was processed')
+    expect(html).toContain('<details class="teaching-panel">')
+    expect(html).not.toContain('<details class="teaching-panel" open>')
 
     await app.request('/me', formRequest(session.cookie, session.csrfToken))
     html = await (
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
     expect(html).toContain('value="84" selected')
-    expect(fetcher).toHaveBeenLastCalledWith(
-      configuration.oauth.meEndpoint,
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer budget-a-token',
-        }),
-      }),
-    )
+    const request = fetcher.mock.lastCall?.[0]
+    expect(request).toBeInstanceOf(Request)
+    if (!(request instanceof Request)) throw new Error('Expected SDK request.')
+    expect(request.url).toBe(configuration.oauth.meEndpoint.href)
+    expect(request.headers.get('authorization')).toBe('Bearer budget-a-token')
   })
 
   it('rejects selection of a budget not owned by the application user', async () => {

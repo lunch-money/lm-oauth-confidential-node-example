@@ -2,7 +2,7 @@
 
 Before proposing a change, run `npm run check`. Keep the OAuth teaching path compact, framework-independent, and covered by descriptive tests. Do not add secrets, tokens, personal data, private hostnames, raw provider bodies, plaintext credential logging, or unpublished protocol claims.
 
-Changes to OAuth behavior must update the corresponding source JSDoc/security invariant, focused test, root walkthrough, and relevant supporting document. Refresh changes must preserve the documented rotation, serialization, atomic replacement, and terminal recovery contract.
+Changes to OAuth behavior must update the nearby explanation of what the code must do, when it must do it, and what unsafe outcome it prevents, along with the focused test, root walkthrough, and relevant supporting document. Refresh changes must continue to allow only one refresh per connection at a time, save every replacement credential value together, and require authorization again when the old token can no longer be used safely.
 
 ## Keep the Developer Portal walkthrough synchronized
 

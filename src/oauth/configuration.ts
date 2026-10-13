@@ -28,7 +28,7 @@ function convertTokenResponse(
   }
 }
 
-/** Configuration needed by the framework-independent OAuth workflow. */
+/** Lunch Money OAuth settings used by the code in `src/oauth`. */
 export interface OAuthConfiguration {
   readonly issuer: URL
   readonly clientId: string
@@ -41,9 +41,9 @@ export interface OAuthConfiguration {
  * Called during server startup to discover Lunch Money's OAuth endpoints and
  * configure the `openid-client` operations used by the sample. The library
  * validates discovery metadata, callback state, authorization responses, and
- * token responses. The application still authenticates its users, saves pending
- * attempts and credentials, configures the exact redirect URI, presents safe
- * errors, and removes data when a connection or application account ends.
+ * token responses. The application still signs in its own users, remembers who
+ * started each authorization, saves credentials, configures the exact redirect
+ * URI, presents safe errors, and removes data when access ends.
  */
 export async function createOpenIdClient(
   configuration: OAuthConfiguration,
@@ -70,7 +70,8 @@ export async function createOpenIdClient(
 
   return {
     async createAuthorizationUrl(redirectUri) {
-      // Security invariant: create new, unpredictable state and PKCE values for every click so one authorization attempt cannot stand in for another.
+      // Create new unpredictable state and PKCE values for every authorization
+      // click so a callback or code from one attempt cannot stand in for another.
       const state = oauth.randomState()
       const codeVerifier = oauth.randomPKCECodeVerifier()
       const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier)
@@ -80,12 +81,13 @@ export async function createOpenIdClient(
         state,
         code_challenge: codeChallenge,
         code_challenge_method: 'S256',
-        // Lunch Money applies the client's immutable registered scopes. Do not add `scope` here.
+        // Lunch Money applies the scopes chosen when the client was registered; those scopes cannot be changed during authorization. Do not add `scope` here.
       })
       return { state, codeVerifier, url }
     },
     async exchangeCallback(callbackUrl, expected) {
-      // Security invariant: require openid-client to match this callback to the saved attempt and prove that our server started it with this PKCE verifier.
+      // During code exchange, require openid-client to match the saved state and
+      // PKCE verifier so a callback or code not started by this server is rejected.
       const tokens = await oauth.authorizationCodeGrant(
         discovered,
         callbackUrl,
@@ -121,7 +123,8 @@ export async function createOpenIdClient(
       }
     },
     async revoke(token, tokenKind) {
-      // Security invariant: send the credential directly from our server to Lunch Money; never give it to the browser to revoke.
+      // When revoking access, send the credential directly from this server to
+      // Lunch Money so the browser never receives a token it could expose or misuse.
       await oauth.tokenRevocation(discovered, token, {
         token_type_hint: tokenKind,
       })

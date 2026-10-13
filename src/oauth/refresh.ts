@@ -80,8 +80,9 @@ export async function refreshConnection(
         cause instanceof RefreshProtocolError &&
         (cause.kind === 'invalid_grant' || cause.kind === 'malformed_response')
       ) {
-        // Security invariant: invalid_grant may mean expiry, revocation, or replay;
-        // never retry it or reveal which provider condition occurred.
+        // When refresh returns invalid_grant, stop using and delete this token
+        // set. Retrying could replay a consumed token, and distinguishing expiry,
+        // revocation, or replay would expose provider state the app cannot verify.
         try {
           await store.delete(owner.applicationUserId, identity)
         } catch {
@@ -103,8 +104,9 @@ export async function refreshConnection(
     }
 
     try {
-      // Security invariant: access token, rotated refresh token, expiration, and
-      // scope metadata cross the storage boundary as one complete value.
+      // After refresh succeeds, save the new access token, replacement refresh
+      // token, expiration, and scopes in one operation. A partial update could
+      // pair values from different responses and make the connection unusable.
       await store.upsert(owner.applicationUserId, {
         ...current,
         credentials: replacement,

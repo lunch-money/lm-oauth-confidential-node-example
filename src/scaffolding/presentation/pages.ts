@@ -9,13 +9,14 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-/** Renders the deliberately small, dependency-free demonstration interface. */
+/** Renders the sample page without requiring a browser UI framework. */
 export function page(input: {
   activeAccountId?: number
   authorizationProcessing?: {
     authorizedBudgetCount: number
     budgetName: string
     lunchMoneyUserName: string
+    open: boolean
     result:
       | 'connected_new_user'
       | 'added_budget'
@@ -34,8 +35,19 @@ export function page(input: {
   const message = input.message
     ? `<p class="notice">${escapeHtml(input.message)}</p>`
     : ''
-  const profile = input.profile
-    ? `<h2>GET /v2/me</h2><pre>${escapeHtml(JSON.stringify(input.profile, null, 2))}</pre>`
+  const profileForDisplay = input.profile
+    ? {
+        name: input.profile.name,
+        email: input.profile.email,
+        id: input.profile.id,
+        account_id: input.profile.account_id,
+        budget_name: input.profile.budget_name,
+        primary_currency: input.profile.primary_currency,
+        api_key_label: input.profile.api_key_label,
+      }
+    : undefined
+  const profile = profileForDisplay
+    ? `<h2>GET /v2/me</h2><pre>${escapeHtml(JSON.stringify(profileForDisplay, null, 2))}</pre>`
     : '<p>No profile has been loaded in this browser session.</p>'
   const revocation = input.revocation
     ? `<p class="success">Revoked: ${String(input.revocation.revoked)}. Old token rejected: ${String(input.revocation.oldCredentialRejected)}.</p>`
@@ -88,6 +100,7 @@ function authorizationProcessingPanel(input: {
   authorizedBudgetCount: number
   budgetName: string
   lunchMoneyUserName: string
+  open: boolean
   result:
     | 'connected_new_user'
     | 'added_budget'
@@ -104,7 +117,7 @@ function authorizationProcessingPanel(input: {
   }[input.result]
   const budgetCount = `${input.authorizedBudgetCount} authorized ${input.authorizedBudgetCount === 1 ? 'budget' : 'budgets'}`
 
-  return `<details class="teaching-panel" open><summary>How this authorization was processed</summary><ol><li>The authorization server called the registered redirect URI. See the <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/scaffolding/http/app.ts" target="_blank" rel="noopener noreferrer"><code>/oauth/callback</code> route</a>.</li><li>The callback validated the saved attempt and exchanged the authorization code for credentials on the server. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/callback.ts" target="_blank" rel="noopener noreferrer"><code>completeAuthorization</code></a>.</li><li>The server called <code>GET /v2/me</code> with the access token to identify the Lunch Money user and budget. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/lunch-money-api.ts" target="_blank" rel="noopener noreferrer"><code>identifyLunchMoneyConnection</code></a>.</li><li><strong>Result:</strong> ${escapeHtml(result)} The active user now has ${escapeHtml(budgetCount)}.</li></ol><div class="credential-inspection"><p><strong>Inspect the credential response locally</strong></p><p>Set a debugger breakpoint immediately after <code>exchangeCallback()</code> returns in <code>completeAuthorization</code>, then inspect <code>tokenSet</code>. The normalized server-confidential value has this shape:</p><pre><code>{
+  return `<details class="teaching-panel"${input.open ? ' open' : ''}><summary>How this authorization was processed</summary><ol><li>The authorization server called the registered redirect URI. See the <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/scaffolding/http/app.ts" target="_blank" rel="noopener noreferrer"><code>/oauth/callback</code> route</a>.</li><li>The callback checked the saved attempt and exchanged the authorization code for credentials on the server. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/callback.ts" target="_blank" rel="noopener noreferrer"><code>completeAuthorization</code></a>.</li><li>The server called <code>GET /v2/me</code> with the access token to identify the Lunch Money user and budget. See <a href="https://github.com/lunch-money/lm-oauth-confidential-node-example/blob/main/src/oauth/lunch-money-api.ts" target="_blank" rel="noopener noreferrer"><code>identifyLunchMoneyConnection</code></a>.</li><li><strong>Result:</strong> ${escapeHtml(result)} The active user now has ${escapeHtml(budgetCount)}.</li></ol><div class="credential-inspection"><p><strong>Inspect the credential response locally</strong></p><p>Set a debugger breakpoint immediately after <code>exchangeCallback()</code> returns in <code>completeAuthorization</code>, then inspect <code>tokenSet</code>. This server-only credential value has this shape:</p><pre><code>{
   accessToken: string
   refreshToken?: string
   expiresAt?: string

@@ -99,7 +99,7 @@ If a form reports **Invalid CSRF token**, reload the page and try again. This co
 3. Select one of that user's budgeting accounts and approve access.
 4. After the browser returns to `http://localhost:4002/oauth/callback`, expand **How this authorization was processed** to follow the callback, server-side code exchange, `/v2/me` identity check, and resulting active-user decision. Then choose **Call /v2/me**.
 
-The sample calls `GET /v2/me` from its Node.js server using the server-held access token. It validates the response against the documented `userObject` schema and displays the returned profile fields. The access token is never sent to the browser.
+The sample uses the official [`@lunch-money/lunch-money-js-v2`](https://github.com/lunch-money/lunch-money-js-v2) SDK to call `GET /v2/me` from its Node.js server with the server-held access token. It checks that the documented profile properties are present and treats an incomplete response like a rejected API request. The page chooses the specific profile fields it displays; the access token is never sent to the browser.
 
 The processing panel links each teaching step to its implementation. It deliberately does not reveal credential values. To see the normalized credential response while developing locally, set a debugger breakpoint immediately after `exchangeCallback()` returns in `completeAuthorization`, then inspect `tokenSet`. Do not print tokens in browser output or logs.
 
@@ -119,7 +119,7 @@ Open Lunch Money's [Connected Apps](https://my.lunchmoney.app/connected-apps) pa
 
 ## 6. Optionally refresh access
 
-If you registered the client with `offline_access`, choose **Refresh access token**, then choose **Call /v2/me** again.
+If you registered the client with `offline_access`, choose **Refresh access token**, then choose **Call /v2/me** again. The separate refresh button makes token replacement visible while learning the flow. If **Call /v2/me** receives `401`, the sample keeps a connection that has a refresh token and directs you to refresh explicitly before trying `/v2/me` again. It does not refresh automatically or during the OAuth callback.
 
 Lunch Money replaces both the access token and refresh token after a successful refresh. The sample stores the complete replacement credential set on the server before reporting success. Calling `/v2/me` again confirms that it is using the replacement access token.
 

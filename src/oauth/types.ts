@@ -17,7 +17,7 @@ export type ApplicationSessionId = string & {
   readonly __brand: 'ApplicationSessionId'
 }
 
-/** Stable budgeting-account ID returned by validated `GET /v2/me`. */
+/** Budgeting-account ID returned by a successful, complete `GET /v2/me` response. */
 export type AccountId = number & { readonly __brand: 'AccountId' }
 
 /**
@@ -56,14 +56,14 @@ export interface AuthorizationAttempt {
 export interface CredentialSet {
   readonly accessToken: string
   readonly expiresAt?: string
-  /** Present only when the client's immutable registered scopes include `offline_access`. */
+  /** Present only when `offline_access` was chosen during client registration. */
   readonly refreshToken?: string
   readonly scope: string
 }
 
 /**
  * One identified Lunch Money budgeting-account connection. The account ID is
- * learned from a validated `GET /v2/me` response after authorization; the
+ * learned from a successful, complete `GET /v2/me` response after authorization; the
  * display name is metadata and must never be used as the storage key.
  */
 export interface LunchMoneyConnection extends ConnectionIdentity {
@@ -84,7 +84,7 @@ export type RevocableTokenKind = 'access_token' | 'refresh_token'
 /**
  * The OAuth operations the application needs from `openid-client`. The
  * application supplies redirect and callback URLs plus server-held credentials;
- * the adapter returns a browser destination or a credential set to store. It
+ * this interface returns a browser destination or a credential set to store. It
  * also creates and checks state and PKCE values, exchanges authorization codes,
  * refreshes credentials, and requests revocation without exposing sensitive
  * values to the browser.
@@ -116,7 +116,7 @@ export interface OAuthProtocolClient {
    * Call when a connection needs fresh credentials. Sends its server-held
    * refresh token and returns the complete replacement set. Lunch Money rotates
    * refresh tokens, meaning the returned refresh token replaces the one just
-   * used; the caller must store the new set atomically.
+   * used; the caller must store every returned value together in one operation.
    */
   refresh(credentials: CredentialSet): Promise<CredentialSet>
 

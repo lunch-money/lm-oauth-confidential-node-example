@@ -9,10 +9,10 @@ import type {
  *
  * Every operation identifies both the signed-in application user and one Lunch
  * Money connection so credentials cannot be read or changed for another user.
- * Production implementations must encrypt and durably store credentials, keep
- * users' data separate, replace a complete credential set in one operation, and
- * remove it when the connection or application account ends. Use an internal
- * application user ID, never an email address or browser-provided ID.
+ * A production implementation must encrypt credentials, keep them after a
+ * server restart, prevent one user from reading another user's values, replace
+ * all rotated token values together, and remove them when access ends. Use an
+ * internal application user ID, never an email address or browser-provided ID.
  */
 export interface CredentialStore {
   get(

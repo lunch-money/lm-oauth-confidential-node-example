@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
+    "@lunch-money/lunch-money-js-v2": "2.11.1",
     "dotenv": "17.4.2",
     "hono": "4.13.7",
     "openid-client": "6.8.8",

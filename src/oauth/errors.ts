@@ -1,4 +1,4 @@
-/** Stable, browser-safe failure categories. Provider bodies and credentials are never included. */
+/** Failure categories the application can handle without exposing credentials or Lunch Money response bodies. */
 export type OAuthErrorCode =
   | 'authorization_denied'
   | 'callback_invalid'
@@ -9,19 +9,42 @@ export type OAuthErrorCode =
   | 'reauthorization_required'
   | 'resource_failure'
 
-/** A safe domain error suitable for mapping to an HTTP response or redacted log event. */
+export interface OAuthErrorDiagnostic {
+  readonly failureReason?:
+    'http_error' | 'invalid_json' | 'invalid_response' | 'network_error'
+  readonly httpStatus?: number
+}
+
+/** An OAuth failure with a message safe to show in the sample and an optional server-only cause. */
 export class OAuthError extends Error {
   constructor(
     public readonly code: OAuthErrorCode,
     message: string,
     public readonly cause?: unknown,
+    public readonly diagnostic?: OAuthErrorDiagnostic,
   ) {
     super(message)
     this.name = 'OAuthError'
   }
 }
 
-/** Internal refresh failure classification; messages and provider bodies remain server-only. */
+/** Returns only the error code, failure reason, and HTTP status for safe server logging. */
+export function safeOAuthErrorDiagnostic(
+  error: unknown,
+): Record<string, unknown> {
+  if (!(error instanceof OAuthError)) return { errorCode: 'unexpected_error' }
+  return {
+    errorCode: error.code,
+    ...(error.diagnostic?.failureReason
+      ? { failureReason: error.diagnostic.failureReason }
+      : {}),
+    ...(error.diagnostic?.httpStatus === undefined
+      ? {}
+      : { httpStatus: error.diagnostic.httpStatus }),
+  }
+}
+
+/** Describes why refresh failed without passing Lunch Money's response body to the browser. */
 export class RefreshProtocolError extends Error {
   constructor(
     public readonly kind: 'invalid_grant' | 'transient' | 'malformed_response',

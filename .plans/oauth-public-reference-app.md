@@ -241,7 +241,7 @@ obvious TypeScript syntax.
 - Place "why" comments beside state generation/verification, PKCE generation,
   redirect URI use, authorization-code consumption, token storage, revocation,
   cookie settings, and log redaction.
-- Mark security invariants consistently, for example `Security invariant:`.
+- Beside each security check, explain what the code must do, when it must do it, and what unsafe outcome it prevents.
 - Explain what `openid-client` validates or generates for us; do not obscure
   important checks behind a library call with no commentary.
 - Link comments to stable Lunch Money documentation or relevant standards only

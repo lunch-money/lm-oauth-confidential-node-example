@@ -37,21 +37,24 @@ export async function completeAuthorization(
       'The OAuth callback could not be verified.',
     )
 
-  // Security invariant: consuming state makes the attempt single-use and recovers its server-bound owner.
+  // Consume the saved attempt before processing the callback so the same state
+  // cannot be submitted twice and ownership comes from the server's saved record.
   const attempt = await attempts.consume(state)
   if (!attempt)
     throw new OAuthError(
       'callback_invalid',
       'The OAuth callback could not be verified.',
     )
-  // Security invariant: the user completing the callback must be the same server-authenticated user who started it.
+  // Before exchanging the code, require the currently signed-in application
+  // user to match the saved starter so one user cannot complete another user's flow.
   if (attempt.applicationUserId !== authenticatedApplicationUserId) {
     throw new OAuthError(
       'callback_invalid',
       'The OAuth callback could not be verified.',
     )
   }
-  // Security invariant: a callback must return to the same opaque application session that initiated the redirect.
+  // Before exchanging the code, require the same server-side browser session
+  // that started authorization so a copied callback cannot be used elsewhere.
   if (attempt.applicationSessionId !== applicationSessionId) {
     throw new OAuthError(
       'callback_invalid',
@@ -77,7 +80,8 @@ export async function completeAuthorization(
       codeVerifier: attempt.codeVerifier,
     })
   } catch (cause) {
-    // Security invariant: provider errors may contain codes, bodies, and credentials; expose only this stable message.
+    // If code exchange fails, expose only this fixed message so provider error
+    // bodies, codes, or credential values cannot reach the browser.
     throw new OAuthError(
       'provider_failure',
       'Lunch Money could not complete the token exchange.',
@@ -85,7 +89,7 @@ export async function completeAuthorization(
     )
   }
 
-  // Security invariant: only the validated resource response decides which budgeting account owns the credentials.
+  // Use the complete /v2/me response—not a browser or callback value—to decide which budget owns the credentials.
   const profile = await identifyLunchMoneyConnection(
     tokenSet,
     meEndpoint,

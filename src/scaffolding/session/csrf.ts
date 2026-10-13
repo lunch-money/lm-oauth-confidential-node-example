@@ -17,7 +17,8 @@ export async function verifyCsrfToken(
 ): Promise<boolean> {
   const body = await context.req.parseBody()
   const submitted = body.csrf_token
-  // Security invariant: state-changing form actions require an unguessable value bound to the signed application session.
+  // Before a form changes server state, require the random token stored in this
+  // signed browser session so another site cannot submit the action for the user.
   return (
     typeof submitted === 'string' && equalTokens(session.csrfToken, submitted)
   )

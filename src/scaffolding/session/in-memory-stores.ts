@@ -26,10 +26,11 @@ export class InMemoryAuthorizationAttemptStore implements AuthorizationAttemptSt
   }
 
   async consume(state: string): Promise<AuthorizationAttempt | undefined> {
+    // Delete the attempt as soon as a callback presents its state, even when
+    // the attempt has expired, so the same browser return cannot be submitted twice.
     const attempt = this.attempts.get(state)
     this.attempts.delete(state)
     this.removeExpired()
-    // Security invariant: consumption always deletes the value, including expired attempts, so callbacks cannot replay it.
     if (!attempt || attempt.expiresAt <= this.now()) return undefined
     return attempt
   }

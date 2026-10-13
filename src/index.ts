@@ -13,7 +13,8 @@ async function start(): Promise<void> {
   try {
     configuration = loadConfiguration()
   } catch (error) {
-    // Security invariant: diagnostics identify setting names but never rejected values.
+    // When startup settings are invalid, name only the affected settings so
+    // rejected secrets or private URLs cannot enter logs.
     console.error(`Startup failed: ${safeConfigurationError(error)}`)
     process.exitCode = 1
     return
@@ -23,8 +24,9 @@ async function start(): Promise<void> {
   try {
     protocol = await createOpenIdClient(configuration.oauth)
   } catch {
-    // Security invariant: do not print discovery responses, which may contain
-    // details returned by the authorization server that do not belong in shared logs.
+    // When OAuth discovery fails, report a fixed troubleshooting message rather
+    // than the response, which may contain authorization-server details that do
+    // not belong in shared logs.
     console.error(
       'Startup failed: OAuth discovery failed. Check LUNCH_MONEY_API_BASE_URL and confirm that its origin exposes /.well-known/oauth-authorization-server.',
     )

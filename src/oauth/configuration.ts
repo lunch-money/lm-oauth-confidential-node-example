@@ -70,7 +70,8 @@ export async function createOpenIdClient(
 
   return {
     async createAuthorizationUrl(redirectUri) {
-      // Security invariant: create new, unpredictable state and PKCE values for every click so one authorization attempt cannot stand in for another.
+      // Create new unpredictable state and PKCE values for every authorization
+      // click so a callback or code from one attempt cannot stand in for another.
       const state = oauth.randomState()
       const codeVerifier = oauth.randomPKCECodeVerifier()
       const codeChallenge = await oauth.calculatePKCECodeChallenge(codeVerifier)
@@ -85,7 +86,8 @@ export async function createOpenIdClient(
       return { state, codeVerifier, url }
     },
     async exchangeCallback(callbackUrl, expected) {
-      // Security invariant: require openid-client to match this callback to the saved attempt and prove that our server started it with this PKCE verifier.
+      // During code exchange, require openid-client to match the saved state and
+      // PKCE verifier so a callback or code not started by this server is rejected.
       const tokens = await oauth.authorizationCodeGrant(
         discovered,
         callbackUrl,
@@ -121,7 +123,8 @@ export async function createOpenIdClient(
       }
     },
     async revoke(token, tokenKind) {
-      // Security invariant: send the credential directly from our server to Lunch Money; never give it to the browser to revoke.
+      // When revoking access, send the credential directly from this server to
+      // Lunch Money so the browser never receives a token it could expose or misuse.
       await oauth.tokenRevocation(discovered, token, {
         token_type_hint: tokenKind,
       })

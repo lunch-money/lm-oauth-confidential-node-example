@@ -40,7 +40,9 @@ export async function browserSession(
   }
   const id = randomBytes(32).toString('base64url')
   const value = store.create(id, randomBytes(32).toString('base64url'))
-  // Security invariant: the cookie holds only a signed random lookup ID; OAuth credentials, PKCE values, and session data stay on the server.
+  // When creating a browser session, put only its signed random lookup ID in
+  // the cookie so OAuth credentials, PKCE values, and session data never reach
+  // browser storage.
   await setSignedCookie(context, COOKIE_NAME, id, configuration.sessionSecret, {
     httpOnly: true,
     sameSite: 'Lax',

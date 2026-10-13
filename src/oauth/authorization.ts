@@ -50,7 +50,9 @@ export async function startAuthorization(
   now: () => number = Date.now,
 ): Promise<URL> {
   const created = await protocol.createAuthorizationUrl(input.redirectUri)
-  // Security invariant: ownership and browser-session binding come from authenticated server state, never form or callback values.
+  // When saving the authorization attempt, take its user and browser-session
+  // identity from authenticated server state so form or callback values cannot
+  // assign the resulting credentials to a different owner.
   await attempts.save({
     applicationSessionId: input.applicationSessionId,
     applicationUserId: input.applicationUserId,

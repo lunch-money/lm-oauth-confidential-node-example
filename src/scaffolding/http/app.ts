@@ -212,7 +212,8 @@ export function createApp(
       })
       return context.redirect(url.toString())
     } catch {
-      // Security invariant: default logs contain event names only, never exceptions or OAuth values.
+      // When authorization cannot start, log only the fixed event name so an
+      // exception cannot put OAuth values or provider details into shared logs.
       console.error(JSON.stringify({ event: 'oauth.authorization.failed' }))
       return context.text('OAuth authorization could not start.', 502)
     }

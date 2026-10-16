@@ -6,7 +6,7 @@ export default [
   { ignores: ['dist/**', 'node_modules/**'] },
   js.configs.recommended,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,
       parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
@@ -15,7 +15,7 @@ export default [
     rules: { ...tseslint.configs.recommended.rules, 'no-undef': 'off' },
   },
   {
-    files: ['src/oauth/**/*.ts'],
+    files: ['src/oauth/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',

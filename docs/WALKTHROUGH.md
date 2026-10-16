@@ -151,7 +151,7 @@ The request should fail because Lunch Money no longer accepts the stored access 
 
 ## Local reset is not revocation
 
-**Forget local credential only** clears the active budget's locally stored credential after confirmation. It does not contact Lunch Money and does not revoke active access.
+**Forget local credential only** opens a server-rendered confirmation page explaining what will happen. The final CSRF-protected POST clears the active budget's locally stored credential. It does not contact Lunch Money and does not revoke active access.
 
 When access is still active, revoke it first through **Disconnect active budget** or Lunch Money's Connected Apps page. Forget the local credential by itself only when the remote authorization has already been revoked or you deliberately want to clear this disposable local demonstration.
 

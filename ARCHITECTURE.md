@@ -33,7 +33,20 @@ Browser                         Node server                         Lunch Money
   |-------------------------------->|----------------------------------->|
 ```
 
-`src/oauth/` knows nothing about Hono, HTML, CSS, cookies, or UI. `src/scaffolding/` adapts those concerns. ESLint plus a source-boundary test enforce the direction of dependency.
+`src/oauth/` knows nothing about Hono, React, HTML, CSS, cookies, or UI. `src/scaffolding/` adapts those concerns. ESLint plus a source-boundary test enforce the direction of dependency.
+
+The browser UI is replaceable React server-rendering scaffolding. Hono builds a page model containing only safe display values, and `react-dom/server` turns small components into a complete static document. The browser receives no React runtime, hydration data, OAuth credential, authorization code, PKCE value, raw provider response, or internal exception. All actions remain ordinary server-rendered forms followed by redirects.
+
+## Responsibilities that stay true across implementations
+
+- Create fresh state and S256 PKCE values for every authorization attempt, then accept the callback only for that saved attempt.
+- Bind the attempt and resulting credentials to the application user and browser session known by the server; never let browser input choose the owner.
+- Keep client secrets and OAuth credentials out of browser output, URLs, analytics, and default logs.
+- Store credentials under both the Lunch Money user and account identity so one shared budget cannot overwrite another user's connection.
+- Allow only one refresh at a time for a connection and save every replacement credential value together.
+- Revoke the refresh token when one exists, verify that the old access token fails, and only then delete the matching local connection.
+- Require a session-bound CSRF token for every form that changes server state.
+- Treat local deletion as a separate action from remote revocation and require explicit confirmation before deleting the local credential.
 
 [`openid-client`](https://github.com/panva/openid-client) is the recommended and supported third-party Node.js library for Lunch Money OAuth. It owns discovery, standards-compliant state and S256 PKCE generation, authorization URL construction, callback/state validation, authorization-code and refresh-token grants, token-response validation, confidential client authentication, and revocation protocol calls. The application owns user login, session identity, attempt lifetime, immutable-scope registration, ownership, CSRF, per-connection refresh coordination, safe replacement of rotated credentials, failure recovery, API response validation, and lifecycle decisions. See the library's [API reference](https://github.com/panva/openid-client/blob/main/docs/README.md) for its own interfaces.
 

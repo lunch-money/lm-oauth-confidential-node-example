@@ -509,7 +509,11 @@ describe('Hono scaffolding', () => {
     const app = createApp(configuration, protocol, { fetcher })
     const session = await openSession(app)
 
-    protocol.credentials = { accessToken: 'budget-a-token', scope: 'me:read' }
+    protocol.credentials = {
+      accessToken: 'budget-a-token',
+      refreshToken: 'budget-a-refresh-token',
+      scope: 'me:read offline_access',
+    }
     await app.request(
       '/oauth/start',
       formRequest(session.cookie, session.csrfToken),
@@ -517,6 +521,15 @@ describe('Hono scaffolding', () => {
     await app.request('/oauth/callback?code=a&state=generated-state', {
       headers: { cookie: session.cookie },
     })
+    await app.request(
+      '/refresh',
+      formRequest(session.cookie, session.csrfToken),
+    )
+    expect(
+      await (
+        await app.request('/', { headers: { cookie: session.cookie } })
+      ).text(),
+    ).toContain('Refresh result: refreshed.')
 
     protocol.credentials = { accessToken: 'budget-b-token', scope: 'me:read' }
     await app.request(
@@ -538,6 +551,7 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('onchange=')
     expect(html).toContain('Switch active budget')
     expect(html).toContain('Authorize another budget')
+    expect(html).not.toContain('Refresh result:')
     expect(html).toContain('Demo User is connected. 2 authorized budgets.')
     expect(html).toContain(
       'Added API testing to Demo User&#x27;s budget selector.',
@@ -570,7 +584,9 @@ describe('Hono scaffolding', () => {
     expect(request).toBeInstanceOf(Request)
     if (!(request instanceof Request)) throw new Error('Expected SDK request.')
     expect(request.url).toBe(configuration.oauth.meEndpoint.href)
-    expect(request.headers.get('authorization')).toBe('Bearer budget-a-token')
+    expect(request.headers.get('authorization')).toBe(
+      'Bearer rotated-access-token',
+    )
   })
 
   it('rejects selection of a budget not owned by the application user', async () => {

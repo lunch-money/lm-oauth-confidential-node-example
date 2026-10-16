@@ -304,6 +304,7 @@ export function createApp(
       session.value.activeLunchMoneyUserId = connectedRecord.lunchMoneyUserId
       delete session.value.hideStoredConnections
       delete session.value.profile
+      delete session.value.refresh
       refreshCoordinator.clearReauthorizationRequired({
         applicationUserId: DEMO_APPLICATION_USER_ID,
         accountId: connected.accountId,

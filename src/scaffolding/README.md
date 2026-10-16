@@ -1,6 +1,8 @@
 # Runnable scaffolding
 
-Everything here is incidental to OAuth: environment parsing, Hono routing, signed cookies, fixed demo identity, per-session CSRF forms, in-memory adapters, server-rendered HTML, styling, and Node startup.
+Everything here is incidental to OAuth: environment parsing, Hono routing, signed cookies, fixed demo identity, per-session CSRF forms, in-memory adapters, React server rendering, styling, and Node startup.
+
+`presentation/page-model.ts` defines the browser-safe values that Hono may pass to the UI. `presentation/Page.tsx` and its small components render those values on the server, while `presentation/render-page.tsx` produces the complete static HTML document. No React runtime or hydration payload is sent to the browser. Replace this presentation layer freely; it is not part of the OAuth teaching core.
 
 Replace `http/app.ts` with your framework's thin routes while keeping calls to the named operations in `src/oauth/`. Replace `session/session-cookie.ts` with your production session/authentication integration. Replace the in-memory stores with shared, expiring authorization-attempt storage and durable encrypted credential storage.
 
@@ -18,4 +20,5 @@ Routes:
 - `POST /me` makes a server-side `GET /v2/me` call.
 - `POST /refresh` appears only when a stored refresh token exists; it rotates and stores a complete replacement set.
 - `POST /revoke` revokes the grant with a refresh token when present (otherwise the access token), verifies rejection, and deletes the credential.
+- `GET /reset/confirm` explains that local deletion is not revocation and renders the final CSRF-protected form.
 - `POST /reset` deletes local state only; it does not revoke remotely.

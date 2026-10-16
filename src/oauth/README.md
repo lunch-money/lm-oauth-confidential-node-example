@@ -2,7 +2,7 @@
 
 This is the directory to study if you want to add Lunch Money OAuth to a server-side Node.js application. It contains the OAuth code that you should understand and adapt: starting authorization, validating the callback, storing credentials for the correct application user, calling Lunch Money, refreshing tokens, and revoking access. The code does not depend on a particular web framework, so it applies whether your Node.js server uses Hono, Express, Fastify, NestJS, or something else.
 
-The rest of this repository makes the example runnable in a browser. [`src/scaffolding/`](../scaffolding/README.md) contains ordinary web-application plumbing such as HTTP routes, signed cookies, browser sessions, CSRF protection, in-memory storage, HTML, and CSS. This sample uses Hono with server-rendered HTML; it does not use React, Vite, or Tailwind. Replace that scaffolding with the equivalent pieces from your own application while keeping the OAuth responsibilities shown here.
+The rest of this repository makes the example runnable in a browser. [`src/scaffolding/`](../scaffolding/README.md) contains ordinary web-application plumbing such as HTTP routes, signed cookies, browser sessions, CSRF protection, in-memory storage, React server components, and CSS. Hono renders those components to static HTML; no React runtime or hydration code is sent to the browser. Replace that scaffolding with the equivalent pieces from your own application while keeping the OAuth responsibilities shown here.
 
 ESLint and the [`src/oauth` boundary test](../../tests/oauth/boundary.test.ts) ensure this directory does not import Hono, React, Vite, Tailwind, HTML, or cookie libraries.
 

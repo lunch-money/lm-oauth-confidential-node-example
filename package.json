@@ -25,11 +25,15 @@
     "dotenv": "17.4.2",
     "hono": "4.13.7",
     "openid-client": "6.8.8",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "24.10.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
     "@typescript-eslint/eslint-plugin": "8.70.0",
     "@typescript-eslint/parser": "8.70.0",
     "eslint": "10.10.0",

@@ -120,6 +120,36 @@ describe('Hono scaffolding', () => {
     expect(protocol.exchanged).toBeDefined()
   })
 
+  it('shows a non-mutating reset confirmation before the CSRF-protected deletion', async () => {
+    const credentials = new InMemoryCredentialStore()
+    await credentials.upsert('local-demo-user' as ApplicationUserId, {
+      accountId: 84 as AccountId,
+      budgetName: 'Household',
+      credentials: { accessToken: 'server-token', scope: 'me:read' },
+      lunchMoneyUserId: 42,
+    })
+    const app = createApp(configuration, new FakeProtocolClient(), {
+      credentials,
+    })
+    const session = await openSession(app)
+
+    const response = await app.request('/reset/confirm', {
+      headers: { cookie: session.cookie },
+    })
+    expect(response.status).toBe(200)
+    const html = await response.text()
+    expect(html).toContain('Forget local credential?')
+    expect(html).toContain('Household')
+    expect(html).toContain('action="/reset" method="post"')
+    expect(html).toContain(`name="csrf_token" value="${session.csrfToken}"`)
+    expect(
+      await credentials.get('local-demo-user' as ApplicationUserId, {
+        accountId: 84 as AccountId,
+        lunchMoneyUserId: 42,
+      }),
+    ).toBeDefined()
+  })
+
   it('hides the previous user after a new authorization fails during /v2/me and logs only safe diagnostics', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -227,7 +257,7 @@ describe('Hono scaffolding', () => {
       await app.request('/', { headers: { cookie: session.cookie } })
     ).text()
     expect(callbackHtml).toContain('How this authorization was processed')
-    expect(callbackHtml).toContain('<details class="teaching-panel" open>')
+    expect(callbackHtml).toContain('<details class="teaching-panel" open="">')
     expect(callbackHtml).toContain('Inspect the credential response locally')
     expect(callbackHtml).toContain('exchangeCallback()')
     expect(callbackHtml).toContain('accessToken: string')
@@ -249,7 +279,7 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('must not be displayed')
     expect(html).toContain('How this authorization was processed')
     expect(html).toContain('<details class="teaching-panel">')
-    expect(html).not.toContain('<details class="teaching-panel" open>')
+    expect(html).not.toContain('<details class="teaching-panel" open="">')
   })
 
   it('hides the previous profile and budget selection when /v2/me rejects the saved credential', async () => {
@@ -423,7 +453,7 @@ describe('Hono scaffolding', () => {
         await (
           await app.request('/', { headers: { cookie: session.cookie } })
         ).text(),
-      ).toContain('<details class="teaching-panel" open>')
+      ).toContain('<details class="teaching-panel" open="">')
 
       await app.request(route, formRequest(session.cookie, session.csrfToken))
       const html = await (
@@ -431,7 +461,7 @@ describe('Hono scaffolding', () => {
       ).text()
       expect(html).toContain('How this authorization was processed')
       expect(html).toContain('<details class="teaching-panel">')
-      expect(html).not.toContain('<details class="teaching-panel" open>')
+      expect(html).not.toContain('<details class="teaching-panel" open="">')
     },
   )
 
@@ -503,21 +533,19 @@ describe('Hono scaffolding', () => {
     expect(html).toContain('Household')
     expect(html).toContain('API testing')
     expect(html).toContain('<h2>Active budget</h2>')
-    expect(html).toContain('<form class="success"')
-    expect(html).toContain('value="91" selected')
-    expect(html).toContain('onchange="this.form.submit()"')
-    expect(html).not.toContain('Switch budget')
+    expect(html).toContain('<form class="success budget-selector"')
+    expect(html).toContain('value="91" selected=""')
+    expect(html).not.toContain('onchange=')
+    expect(html).toContain('Switch active budget')
     expect(html).toContain('Authorize another budget')
     expect(html).toContain('Demo User is connected. 2 authorized budgets.')
     expect(html).toContain(
-      'Added API testing to Demo User&#39;s budget selector.',
+      'Added API testing to Demo User&#x27;s budget selector.',
     )
     expect(html).toContain('The active user now has 2 authorized budgets.')
     expect(html).toContain('Disconnect active budget')
     expect(html).toContain('Forget local credential only')
-    expect(html).toContain(
-      "confirm('Forget this local credential without revoking access at Lunch Money?')",
-    )
+    expect(html).toContain('action="/reset/confirm"')
 
     const exchangedBeforeSwitch = protocol.exchanged
     const switched = await app.request(
@@ -531,7 +559,7 @@ describe('Hono scaffolding', () => {
     ).text()
     expect(html).toContain('No profile has been loaded')
     expect(html).toContain('<details class="teaching-panel">')
-    expect(html).not.toContain('<details class="teaching-panel" open>')
+    expect(html).not.toContain('<details class="teaching-panel" open="">')
 
     await app.request('/me', formRequest(session.cookie, session.csrfToken))
     html = await (
@@ -670,7 +698,7 @@ describe('Hono scaffolding', () => {
     expect(html).not.toContain('Savings')
     expect(html).not.toContain('another@example.com')
     expect(html).toContain(
-      'Switched to Demo User and hid the previous user&#39;s budgets. Their credentials remain in this sample&#39;s server-side memory until they are disconnected, forgotten, or the sample is restarted.',
+      'Switched to Demo User and hid the previous user&#x27;s budgets. Their credentials remain in this sample&#x27;s server-side memory until they are disconnected, forgotten, or the sample is restarted.',
     )
     expect(
       await credentials.get('local-demo-user' as ApplicationUserId, {
@@ -701,7 +729,7 @@ describe('Hono scaffolding', () => {
     expect(returnedHtml).toContain('Savings')
     expect(returnedHtml).not.toContain('Personal')
     expect(returnedHtml).toContain(
-      'Returned to Demo User and restored that user&#39;s previously authorized budgets from this sample&#39;s server-side memory.',
+      'Returned to Demo User and restored that user&#x27;s previously authorized budgets from this sample&#x27;s server-side memory.',
     )
   })
 

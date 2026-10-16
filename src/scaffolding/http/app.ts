@@ -16,7 +16,11 @@ import {
   type OAuthProtocolClient,
 } from '../../oauth/index.js'
 import type { ApplicationConfiguration } from '../configuration.js'
-import { page } from '../presentation/pages.js'
+import type { PageModel } from '../presentation/page-model.js'
+import {
+  renderPage,
+  renderResetConfirmation,
+} from '../presentation/render-page.js'
 import {
   InMemoryAuthorizationAttemptStore,
   InMemoryBrowserSessionStore,
@@ -171,16 +175,39 @@ export function createApp(
     const stored = connections.find(
       (connection) => connection.accountId === session.value.activeAccountId,
     )
-    return context.html(
-      page({
-        ...session.value,
-        canRefresh: Boolean(stored?.credentials.refreshToken),
-        connections: connections.map(({ accountId, budgetName }) => ({
-          accountId,
-          budgetName,
-        })),
-      }),
-    )
+    const model: PageModel = {
+      canRefresh: Boolean(stored?.credentials.refreshToken),
+      connections: connections.map(({ accountId, budgetName }) => ({
+        accountId,
+        budgetName,
+      })),
+      csrfToken: session.value.csrfToken,
+      ...(session.value.activeAccountId === undefined
+        ? {}
+        : { activeAccountId: session.value.activeAccountId }),
+      ...(session.value.authorizationProcessing
+        ? { authorizationProcessing: session.value.authorizationProcessing }
+        : {}),
+      ...(session.value.message ? { message: session.value.message } : {}),
+      ...(session.value.profile
+        ? {
+            profile: {
+              name: session.value.profile.name,
+              email: session.value.profile.email,
+              id: session.value.profile.id,
+              account_id: session.value.profile.account_id,
+              budget_name: session.value.profile.budget_name,
+              primary_currency: session.value.profile.primary_currency,
+              api_key_label: session.value.profile.api_key_label,
+            },
+          }
+        : {}),
+      ...(session.value.refresh ? { refresh: session.value.refresh } : {}),
+      ...(session.value.revocation
+        ? { revocation: session.value.revocation }
+        : {}),
+    }
+    return context.html(renderPage(model))
   })
 
   app.get('/styles.css', async (context) => {
@@ -190,6 +217,32 @@ export function createApp(
         new URL('../presentation/styles.css', import.meta.url),
         'utf8',
       ),
+    )
+  })
+
+  app.get('/reset/confirm', async (context) => {
+    const session = await browserSession(
+      context,
+      configuration,
+      browserSessions,
+    )
+    if (
+      session.value.activeAccountId === undefined ||
+      session.value.activeLunchMoneyUserId === undefined
+    ) {
+      return context.redirect('/')
+    }
+    const identity = {
+      accountId: session.value.activeAccountId,
+      lunchMoneyUserId: session.value.activeLunchMoneyUserId,
+    }
+    const connection = await credentials.get(DEMO_APPLICATION_USER_ID, identity)
+    if (!connection) return context.redirect('/')
+    return context.html(
+      renderResetConfirmation({
+        budgetName: connection.budgetName,
+        csrfToken: session.value.csrfToken,
+      }),
     )
   })
 

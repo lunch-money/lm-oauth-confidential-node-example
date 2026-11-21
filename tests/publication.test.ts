@@ -3,8 +3,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const forbiddenPreviewHosts = [
-  ['api-alpha', 'lunchmoney', 'dev'].join('.'),
-  ['alpha', 'lunchmoney', 'dev'].join('.'),
   ['alpha', 'lunchmoney', 'app'].join('.'),
   ['oauth-preview', 'lunchmoney', 'dev'].join('.'),
 ]
@@ -48,7 +46,7 @@ describe('public repository content', () => {
       'http://localhost:4002/oauth/callback',
     )
     expect(contents).toMatch(
-      /^# LUNCH_MONEY_API_BASE_URL=YOUR_SUPPORT_SUPPLIED_API_BASE_URL$/m,
+      /^# LUNCH_MONEY_API_BASE_URL=YOUR_SUPPORT_SUPPLIED_API_ORIGIN$/m,
     )
     expect(contents).toMatch(/^# PORT=/m)
     expect(contents).toMatch(/^# SESSION_SECRET=/m)

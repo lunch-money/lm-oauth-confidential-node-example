@@ -46,7 +46,7 @@ Use Node.js 20 or newer and npm 11.6.2. Then continue with [Register a confident
 
 ### Load settings from a `.env` file
 
-The walkthrough configures the process with `export` commands. As an equivalent local option, copy [`env.example`](env.example) to `.env` in the repository root and replace the client ID, client secret, and redirect URI placeholders. The API base URL defaults to production; uncomment its override only when Lunch Money supplies a beta or alpha URL for a client registered in that environment. Then run `npm run dev`.
+The walkthrough configures the process with `export` commands. As an equivalent local option, copy [`env.example`](env.example) to `.env` in the repository root and replace the client ID, client secret, and redirect URI placeholders. `LUNCH_MONEY_API_BASE_URL` is the API origin without a trailing slash and is also the exact OAuth issuer. It defaults to the production origin; override it only with the origin for the environment where your client is registered. Then run `npm run dev`.
 
 On startup, the sample uses [dotenv](https://github.com/motdotla/dotenv) to load that `.env` file when it exists. Variables already set in the shell are left unchanged, so the walkthrough's exports still take effect if both are present.
 

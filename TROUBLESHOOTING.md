@@ -8,9 +8,7 @@ Confirm `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_URI`, and `LUN
 
 ## Discovery or network failure
 
-Use the issuer exactly as documented in the Lunch Money Developer Portal. It must expose authorization-server metadata and be reachable by Node. Do not substitute a private repository or undocumented local service. Check proxy/TLS settings without logging credentials.
-
-Set `LUNCH_MONEY_API_BASE_URL` to the API base URL for the environment where your OAuth client is registered. Preview participants receive this value with their access instructions; generally available environments publish it in the official Lunch Money OAuth documentation. Do not guess or copy an endpoint from another environment. The sample requires HTTPS for a remote service origin.
+Set `LUNCH_MONEY_API_BASE_URL` to the API origin for the environment where your OAuth client is registered. It must have no path, query, fragment, or trailing slash, and the same value is the OAuth issuer. The origin must expose authorization-server metadata, be reachable by Node, and use HTTPS unless it is a loopback test origin.
 
 ## Redirect URI mismatch
 

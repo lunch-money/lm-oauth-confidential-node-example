@@ -3,6 +3,7 @@ import type { CustomFetch, CustomFetchOptions } from 'openid-client'
 import * as oauth from 'openid-client'
 import { describe, expect, it, vi } from 'vitest'
 import { createOpenIdClient } from '../../src/oauth/index.js'
+import { loadConfiguration } from '../../src/scaffolding/configuration.js'
 
 const redirectUri = 'http://localhost:4002/oauth/callback'
 const metadata = {
@@ -38,6 +39,67 @@ function decodeBasicCredentials(value: string | null): [string, string] {
 }
 
 describe('openid-client adapter', () => {
+  it.each([
+    ['production', 'https://api.lunchmoney.dev'],
+    ['alpha', 'https://api-alpha.lunchmoney.dev'],
+    ['slash-terminated alpha', 'https://api-alpha.lunchmoney.dev/'],
+  ])(
+    'uses exactly one slash between the normalized %s origin and every path',
+    async (_name, configuredOrigin) => {
+      const origin = configuredOrigin.replace(/\/+$/, '')
+      const requests: string[] = []
+      const fetcher = vi.fn<CustomFetch>().mockImplementation(async (input) => {
+        requests.push(input)
+        if (input === `${origin}/.well-known/oauth-authorization-server`) {
+          return Response.json({
+            ...metadata,
+            issuer: origin,
+            authorization_endpoint: `${origin}/oauth/authorize`,
+            token_endpoint: `${origin}/oauth/token`,
+            revocation_endpoint: `${origin}/oauth/revoke`,
+          })
+        }
+        if (input === `${origin}/oauth/token`) {
+          return Response.json({
+            access_token: 'private-access-token',
+            token_type: 'Bearer',
+            scope: 'me:read',
+          })
+        }
+        if (input === `${origin}/oauth/revoke`)
+          return new Response(null, { status: 200 })
+        throw new Error(`Unexpected test request: ${input}`)
+      })
+      const loaded = loadConfiguration({
+        OAUTH_CLIENT_ID: 'sample-client',
+        OAUTH_CLIENT_SECRET: 'server-secret',
+        OAUTH_REDIRECT_URI: redirectUri,
+        LUNCH_MONEY_API_BASE_URL: configuredOrigin,
+      })
+      const protocol = await createOpenIdClient(loaded.oauth, fetcher)
+      const authorization = await protocol.createAuthorizationUrl(redirectUri)
+
+      await protocol.exchangeCallback(
+        new URL(
+          `${redirectUri}?code=one-time-code&state=${authorization.state}`,
+        ),
+        {
+          state: authorization.state,
+          codeVerifier: authorization.codeVerifier,
+        },
+      )
+      await protocol.revoke('private-access-token', 'access_token')
+
+      expect(loaded.oauth.issuer.origin).toBe(origin)
+      expect(loaded.oauth.meEndpoint.href).toBe(`${origin}/v2/me`)
+      expect(requests).toEqual([
+        `${origin}/.well-known/oauth-authorization-server`,
+        `${origin}/oauth/token`,
+        `${origin}/oauth/revoke`,
+      ])
+    },
+  )
+
   it('uses discovered endpoints and builds state plus S256 PKCE without an authorization scope', async () => {
     const fetcher = vi
       .fn<CustomFetch>()

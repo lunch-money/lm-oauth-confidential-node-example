@@ -2,9 +2,10 @@ import { randomBytes } from 'node:crypto'
 import { z, ZodError } from 'zod'
 import type { OAuthConfiguration } from '../oauth/configuration.js'
 
-const secureOrLoopbackUrl = z
+const apiOrigin = z
   .string()
   .url()
+  .transform((value) => value.replace(/\/+$/, ''))
   .refine(
     (value) => {
       const url = new URL(value)
@@ -18,6 +19,9 @@ const secureOrLoopbackUrl = z
       message: 'must use HTTPS or a loopback HTTP origin',
     },
   )
+  .refine((value) => new URL(value).origin === value, {
+    message: 'must be an origin without a path, query, or fragment',
+  })
 
 export const DEFAULT_API_BASE_URL = 'https://api.lunchmoney.dev'
 
@@ -28,7 +32,7 @@ const schema = z.object({
   OAUTH_CLIENT_ID: z.string().min(1),
   OAUTH_CLIENT_SECRET: z.string().min(1),
   OAUTH_REDIRECT_URI: z.string().url(),
-  LUNCH_MONEY_API_BASE_URL: secureOrLoopbackUrl.default(DEFAULT_API_BASE_URL),
+  LUNCH_MONEY_API_BASE_URL: apiOrigin.default(DEFAULT_API_BASE_URL),
   SESSION_SECRET: z.string().min(32).optional(),
   PORT: z.coerce.number().int().positive().default(4002),
 })
@@ -43,8 +47,9 @@ export interface ApplicationConfiguration {
 /**
  * Call once while starting the confidential server. The application must
  * supply its registered client ID, client secret, and exact redirect URI. The
- * Lunch Money API base URL defaults to production and can be overridden for an
- * environment-specific client registration. The client secret and session
+ * Lunch Money API base URL is normalized to an origin without a trailing slash,
+ * defaults to production, and can be overridden for an environment-specific
+ * client registration. The client secret and session
  * secret must never be exposed to the browser or logs. This validates those
  * settings and returns the typed server, OAuth, and `/v2/me` configuration used
  * by the sample. For local use, the sample can generate a new session-signing
@@ -87,10 +92,8 @@ export function safeConfigurationError(error: unknown): string {
       error.issues.map((issue) => String(issue.path[0] ?? 'configuration')),
     ),
   ]
-  const requiresHttps = error.issues.some(
-    (issue) =>
-      issue.path[0] === 'LUNCH_MONEY_API_BASE_URL' &&
-      issue.message === 'must use HTTPS or a loopback HTTP origin',
+  const apiOriginIssue = error.issues.find(
+    (issue) => issue.path[0] === 'LUNCH_MONEY_API_BASE_URL',
   )
-  return `Invalid or missing configuration: ${names.join(', ')}${requiresHttps ? '. LUNCH_MONEY_API_BASE_URL must use HTTPS or a loopback HTTP origin.' : ''}`
+  return `Invalid or missing configuration: ${names.join(', ')}${apiOriginIssue ? `. LUNCH_MONEY_API_BASE_URL ${apiOriginIssue.message}.` : ''}`
 }
